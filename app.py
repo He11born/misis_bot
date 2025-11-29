@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 import requests
 import io
 import base64
-import asyncio # Добавлен для асинхронного управления
+import asyncio 
 
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -57,11 +57,10 @@ logger = logging.getLogger(__name__)
 STUDENT_DATA: Dict[str, Dict[str, Any]] = {} 
 
 # --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР PTB Application ---
-# Переменная будет содержать настроенное, но еще не запущенное приложение PTB
 application: Application = None 
 
 
-# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ ---
+# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ (ИСПРАВЛЕНО) ---
 def parse_csv_data(csv_content: str) -> bool:
     """Парсит содержимое CSV-файла (строка) и заполняет STUDENT_DATA."""
     global STUDENT_DATA
@@ -75,7 +74,18 @@ def parse_csv_data(csv_content: str) -> bool:
         reader = csv.DictReader(csvfile, delimiter=delimiter_char)
         
         for row in reader:
-            row = {k.strip(): v.strip() for k, v in row.items()}
+            # --- ИСПРАВЛЕННАЯ СЕКЦИЯ ПАРСИНГА: 
+            # Защита от NoneType: если значение 'v' равно None, мы заменяем его пустой строкой '',
+            # чтобы избежать ошибки strip() для пустых ячеек.
+            processed_row = {}
+            for k, v in row.items():
+                if k is not None:
+                    # Убеждаемся, что значение не None. Если None, используем пустую строку.
+                    safe_v = v if v is not None else '' 
+                    processed_row[k.strip()] = safe_v.strip()
+            row = processed_row
+            # --- КОНЕЦ ИСПРАВЛЕННОЙ СЕКЦИИ
+            
             student_id = row.get('ID номер')
             
             if student_id:
@@ -118,7 +128,7 @@ def load_data_from_git() -> bool:
         return False
 
 
-# --- ФУНКЦИИ РЕДАКТИРОВАНИЯ ДАННЫХ В GIT ---
+# --- ФУНКЦИИ РЕДАКТИРОВАНИЯ ДАННЫХ В GIT (Без изменений) ---
 def update_github_file(new_csv_content: str, commit_message: str) -> bool:
     """Обновляет файл разраб.csv на GitHub через API."""
     if not GITHUB_TOKEN or not REPO_DETAILS_FULL:
@@ -189,7 +199,7 @@ def convert_data_to_csv_string() -> str:
     return output.getvalue()
 
 
-# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ ---
+# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ (Без изменений) ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает команду /start."""
@@ -287,7 +297,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             '🤔 Извините, я не понимаю. Введите ваш ID Номер или нажмите /start.'
         )
 
-# --- КОМАНДЫ АДМИНИСТРАТОРА ---
+# --- КОМАНДЫ АДМИНИСТРАТОРА (Без изменений) ---
 async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда для администратора, чтобы принудительно обновить данные из Git."""
     
@@ -307,7 +317,7 @@ async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "❌ Ошибка загрузки данных. Проверьте логи и переменную CSV_URL."
         )
 
-# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) ---
+# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler - Без изменений) ---
 
 async def start_edit_pass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начинает процесс редактирования пропусков."""
@@ -403,29 +413,27 @@ async def cancel_edit_pass(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return ConversationHandler.END
 
 
-# --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР FASTAPI (для Uvicorn) ---
+# --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР FASTAPI (для Uvicorn - Без изменений) ---
 fastapi_app = FastAPI()
 
-# Health Check Endpoint для Uptime Robot
+# Health Check Endpoint 
 @fastapi_app.get("/")
 def health_check():
     """Возвращает HTTP 200 OK для мониторинга Uptime Robot."""
     return {"status": "ok", "app": "Telegram Bot Webhook"}
 
-# Webhook Endpoint (РУЧНОЕ УПРАВЛЕНИЕ)
+# Webhook Endpoint 
 @fastapi_app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     """Принимает POST-запросы от Telegram и вручную передает их в PTB."""
     global application
 
-    # Ожидаем, пока PTB Application будет готов
     if application is None:
         raise HTTPException(status_code=503, detail="Bot application not initialized.")
 
     try:
         update_json = await request.json()
         update = Update.de_json(update_json, application.bot)
-        # Обрабатываем обновление асинхронно
         await application.process_update(update) 
         return {"status": "ok"}
     
@@ -433,28 +441,24 @@ async def telegram_webhook(request: Request):
         logger.error(f"❌ Ошибка обработки Telegram update: {e}")
         return {"status": "error", "message": "Internal error processing update"}
 
-# --- ФУНКЦИИ ЖИЗНЕННОГО ЦИКЛА FASTAPI ---
+# --- ФУНКЦИИ ЖИЗНЕННОГО ЦИКЛА FASTAPI (Без изменений) ---
 
 @fastapi_app.on_event("startup")
 async def startup_event():
     """Выполняется при запуске Uvicorn. Инициализирует PTB и устанавливает WebHook."""
     global application
     
-    # 1. Первая загрузка данных при старте сервиса
     load_data_from_git()
     
-    # 2. Получение токена
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         logger.error("❌ Токен бота не найден. Установите переменную окружения TELEGRAM_BOT_TOKEN.")
         raise ValueError("TELEGRAM_BOT_TOKEN не установлен")
         
-    # 3. Создание приложения PTB
     application = ApplicationBuilder() \
         .token(token) \
         .build()
 
-    # 4. Добавление обработчиков
     edit_pass_handler = ConversationHandler(
         entry_points=[CommandHandler("edit_pass", start_edit_pass_command)],
         states={
@@ -469,11 +473,9 @@ async def startup_event():
     application.add_handler(edit_pass_handler) 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # 5. Запуск PTB в фоновом режиме
     await application.initialize()
     await application.start()
     
-    # 6. Установка WebHook (вручную)
     webhook_url_full = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
     
     if WEBHOOK_URL and 'http' in WEBHOOK_URL:
@@ -498,7 +500,3 @@ async def shutdown_event():
     if application:
         await application.stop()
         logger.info("🛑 PTB Application stopped gracefully.")
-
-
-# Мы больше не вызываем init_application() напрямую в корне файла.
-# Запуск PTB будет происходить через fastapi_app.on_event("startup").
