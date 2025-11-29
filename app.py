@@ -60,27 +60,23 @@ STUDENT_DATA: Dict[str, Dict[str, Any]] = {}
 application: Application = None 
 
 
-# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ (ИСПРАВЛЕНО) ---
+# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ (ФИКС) ---
 def parse_csv_data(csv_content: str) -> bool:
     """Парсит содержимое CSV-файла (строка) и заполняет STUDENT_DATA."""
     global STUDENT_DATA
     STUDENT_DATA = {}
+    
+    # ФИКС 1: Удаление BOM (Byte Order Mark), если он есть (часто встречается в CSV из Excel).
+    # BOM может мешать корректному парсингу заголовка, если он добавляется к "ID номер".
+    if csv_content.startswith('\ufeff'):
+        csv_content = csv_content.lstrip('\ufeff')
+        logger.info("⚠️ Обнаружен и удален BOM (Byte Order Mark) из CSV-содержимого.")
+        
     csvfile = io.StringIO(csv_content)
     
     try:
-        # --- ИСПРАВЛЕННАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ РАЗДЕЛИТЕЛЯ ---
-        content_snippet = csv_content[:1024]
-        # По умолчанию - точка с запятой (общепринято для русскоязычных CSV)
+        # ФИКС 2: Принудительно устанавливаем разделитель ';', так как он используется при записи и в исходном файле.
         delimiter_char = ';' 
-
-        # 1. Проверяем, есть ли запятые, и их больше, чем точек с запятой
-        if content_snippet.count(',') > content_snippet.count(';'):
-            delimiter_char = ','
-        
-        # 2. Проверяем, есть ли пайпы
-        if content_snippet.count('|') > content_snippet.count(delimiter_char):
-            delimiter_char = '|'
-        # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ РАЗДЕЛИТЕЛЯ ---
         
         reader = csv.DictReader(csvfile, delimiter=delimiter_char)
         
@@ -89,17 +85,19 @@ def parse_csv_data(csv_content: str) -> bool:
             processed_row = {}
             for k, v in row.items():
                 if k is not None:
-                    # k.strip() очищает заголовок (ключ) от пробелов, если они есть.
+                    # Очистка ключа (заголовка) от пробелов.
                     clean_key = k.strip()
-                    # v is None happens when a cell is completely empty.
+                    # Защита от NoneType: если значение None, используем пустую строку, затем очищаем ее.
                     safe_v = v if v is not None else '' 
-                    # safe_v.strip() очищает само значение от пробелов.
                     processed_row[clean_key] = safe_v.strip()
             row = processed_row
             # --- КОНЕЦ СЕКЦИИ ПАРСИНГА
             
-            # Ключ 'ID номер' должен существовать, если разделитель определен верно
-            student_id = row.get('ID номер')
+            # Получаем ID, который является ключом в словаре.
+            student_id_raw = row.get('ID номер')
+            
+            # CRITICAL: Гарантируем, что ID, используемый как ключ, не содержит никаких пробелов или невидимых символов.
+            student_id = student_id_raw.strip() if student_id_raw else None 
             
             if student_id:
                 absences_str = row.get('Количество пропусков', '0')
@@ -113,12 +111,11 @@ def parse_csv_data(csv_content: str) -> bool:
                     'Количество пропусков': absences
                 }
         
-        logger.info(f"✅ Данные успешно загружены. Загружено {len(STUDENT_DATA)} записей. (Разделитель: '{delimiter_char}')")
+        logger.info(f"✅ Данные успешно загружены. Загружено {len(STUDENT_DATA)} записей. (Фиксированный разделитель: '{delimiter_char}')")
         return True
     
     except Exception as e:
-        logger.error(f"❌ Ошибка при парсинге CSV-данных. Вероятно, неверно определен разделитель ({delimiter_char}) или неверный формат. Ошибка: {e}")
-        # Вывод первой строки для помощи в отладке
+        logger.error(f"❌ Ошибка при парсинге CSV-данных. Проверьте заголовок 'ID номер' и разделитель (должен быть ';'). Ошибка: {e}")
         first_line = csv_content.splitlines()[0] if csv_content else "Данные отсутствуют"
         logger.error(f"❌ Первая строка CSV (для отладки): '{first_line}'")
         return False
@@ -132,6 +129,8 @@ def load_data_from_git() -> bool:
     
     try:
         response = requests.get(CSV_URL)
+        # Устанавливаем кодировку явно на UTF-8, чтобы избежать ошибок
+        response.encoding = 'utf-8' 
         response.raise_for_status()
         
         return parse_csv_data(response.text)
