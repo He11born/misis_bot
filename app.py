@@ -75,6 +75,7 @@ def parse_csv_data(csv_content: str) -> bool:
         delimiter_char = ';' 
         
         # ФИКС 2: Использование splitlines() для надежной обработки переводов строк.
+        # Агрессивно удаляем все пробелы/переводы строк вокруг содержимого.
         csv_lines = csv_content.strip().splitlines() 
         
         # КРИТИЧЕСКИЙ ФИКС 3: Проверка на пустое содержимое после очистки
@@ -85,13 +86,20 @@ def parse_csv_data(csv_content: str) -> bool:
         # --- КРИТИЧЕСКИЙ ФИКС 4: Манипуляция с заголовком и передача DictReader только данных ---
         
         # 1. Читаем и очищаем первую строку (заголовок)
+        # БЕЗОПАСНАЯ ПРОВЕРКА: Проверяем, что первый элемент существует и очищаем его.
         header_line = csv_lines[0].strip()
+        
+        if not header_line:
+             logger.error("❌ Первая строка CSV (заголовок) пуста после очистки. Парсинг невозможен.")
+             return False
+             
         # Разбиваем по разделителю и очищаем каждый заголовок от любых пробелов.
-        # Теперь точно уверены, что header_line - это строка.
         fieldnames = [name.strip() for name in header_line.split(delimiter_char)]
         
-        # Проверка, что заголовки не пусты
-        if not all(fieldnames):
+        # Защита от пустых имен полей (например, если строка была "ID; ;Пропуски")
+        fieldnames = [name for name in fieldnames if name]
+        
+        if not fieldnames:
              logger.error("❌ Заголовки CSV-файла пусты или содержат пустые столбцы после очистки. Парсинг невозможен.")
              return False
 
@@ -128,19 +136,24 @@ def parse_csv_data(csv_content: str) -> bool:
             row = processed_row
             # --- КОНЕЦ СЕКЦИИ ПАРСИНГА
             
-            student_id_raw = row.get('ID номер')
+            # Используем очищенные ключи из fieldnames
+            student_id_key = 'ID номер'
+            absences_key = 'Количество пропусков'
+            fio_key = 'ФИО'
+            
+            student_id_raw = row.get(student_id_key)
             student_id = student_id_raw.strip() if student_id_raw else None 
             
             if student_id:
-                absences_str = row.get('Количество пропусков', '0')
+                absences_str = row.get(absences_key, '0')
                 try:
                     absences = int(absences_str)
                 except ValueError:
                     absences = 0
 
                 STUDENT_DATA[student_id] = {
-                    'ФИО': row.get('ФИО', 'Неизвестно'),
-                    'Количество пропусков': absences
+                    fio_key: row.get(fio_key, 'Неизвестно'),
+                    absences_key: absences
                 }
         
         logger.info(f"✅ Данные успешно загружены. Загружено {len(STUDENT_DATA)} записей. (Фиксированный разделитель: '{delimiter_char}')")
@@ -148,7 +161,12 @@ def parse_csv_data(csv_content: str) -> bool:
     
     except Exception as e:
         logger.error(f"❌ Ошибка при парсинге CSV-данных. Проверьте заголовок 'ID номер' и разделитель (должен быть ';'). Ошибка: {e}")
-        first_line = csv_content.splitlines()[0] if csv_content else "Данные отсутствуют"
+        # Для лучшей отладки, если произошла ошибка, попытаемся вывести первую строку
+        try:
+             first_line = csv_content.strip().splitlines()[0] if csv_content.strip() else "Данные отсутствуют или пусты"
+        except:
+             first_line = "Ошибка извлечения первой строки"
+
         logger.error(f"❌ Первая строка CSV (для отладки): '{first_line}'")
         return False
 
@@ -159,11 +177,23 @@ def load_data_from_git() -> bool:
         logger.error("❌ Переменная CSV_URL не установлена. Загрузка данных невозможна.")
         return False
     
+    # КРИТИЧЕСКАЯ ДИАГНОСТИКА: Предупреждение, если URL не похож на RAW
+    if "github.com/blob/" in CSV_URL or "raw.githubusercontent.com" not in CSV_URL:
+        logger.warning(
+            "⚠️ ВНИМАНИЕ: Проверьте переменную CSV_URL! "
+            "Используйте URL сырого файла, начинающийся с 'raw.githubusercontent.com'."
+        )
+    
     try:
-        response = requests.get(CSV_URL)
+        # Увеличиваем таймаут на случай медленного ответа от GitHub
+        response = requests.get(CSV_URL, timeout=10)
         # Устанавливаем кодировку явно на UTF-8, чтобы избежать ошибок
         response.encoding = 'utf-8' 
         response.raise_for_status()
+        
+        # ДОБАВЛЕННАЯ ДИАГНОСТИКА:
+        content_start = response.text[:100].replace('\n', '\\n').replace('\r', '\\r')
+        logger.info(f"✅ Успешный ответ (HTTP {response.status_code}). Начало контента: '{content_start}...'")
         
         return parse_csv_data(response.text)
         
