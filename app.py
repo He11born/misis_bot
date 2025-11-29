@@ -132,19 +132,17 @@ async def change_id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def process_data_request(update: Update, context: ContextTypes.DEFAULT_TYPE, search_id: str) -> None:
-    """Извлекает и форматирует данные о пропусках по ID."""
+    """Извлекает и форматирует данные о пропусках по ID без цветовой индикации."""
     
     if search_id in STUDENT_DATA:
         student = STUDENT_DATA[search_id]
         name = student.get('ФИО', 'Неизвестно')
         absences = student.get('Количество пропусков', 0)
-        
             
         reply_text = (
             f"👤 **Студент:** {name}\n"
             f"🆔 **ID:** `{search_id}`\n"
-            f"📚 **Количество пропусков (в часах):** {absences}\n"
-            f"🚨 **Статус:** {status}"
+            f"📚 **Количество пропусков (в часах):** {absences}"
         )
     else:
         # Эта ветка должна быть недостижима, если ID был проверен ранее
