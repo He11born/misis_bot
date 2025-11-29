@@ -68,24 +68,37 @@ def parse_csv_data(csv_content: str) -> bool:
     csvfile = io.StringIO(csv_content)
     
     try:
+        # --- ИСПРАВЛЕННАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ РАЗДЕЛИТЕЛЯ ---
         content_snippet = csv_content[:1024]
-        delimiter_char = '|' if '|' in content_snippet and ';' not in content_snippet else ';'
+        # По умолчанию - точка с запятой (общепринято для русскоязычных CSV)
+        delimiter_char = ';' 
+
+        # 1. Проверяем, есть ли запятые, и их больше, чем точек с запятой
+        if content_snippet.count(',') > content_snippet.count(';'):
+            delimiter_char = ','
+        
+        # 2. Проверяем, есть ли пайпы
+        if content_snippet.count('|') > content_snippet.count(delimiter_char):
+            delimiter_char = '|'
+        # --- КОНЕЦ ЛОГИКИ ОПРЕДЕЛЕНИЯ РАЗДЕЛИТЕЛЯ ---
         
         reader = csv.DictReader(csvfile, delimiter=delimiter_char)
         
         for row in reader:
-            # --- ИСПРАВЛЕННАЯ СЕКЦИЯ ПАРСИНГА: 
-            # Защита от NoneType: если значение 'v' равно None, мы заменяем его пустой строкой '',
-            # чтобы избежать ошибки strip() для пустых ячеек.
+            # --- СЕКЦИЯ ПАРСИНГА: Очистка ключей и защита от NoneType ---
             processed_row = {}
             for k, v in row.items():
                 if k is not None:
-                    # Убеждаемся, что значение не None. Если None, используем пустую строку.
+                    # k.strip() очищает заголовок (ключ) от пробелов, если они есть.
+                    clean_key = k.strip()
+                    # v is None happens when a cell is completely empty.
                     safe_v = v if v is not None else '' 
-                    processed_row[k.strip()] = safe_v.strip()
+                    # safe_v.strip() очищает само значение от пробелов.
+                    processed_row[clean_key] = safe_v.strip()
             row = processed_row
-            # --- КОНЕЦ ИСПРАВЛЕННОЙ СЕКЦИИ
+            # --- КОНЕЦ СЕКЦИИ ПАРСИНГА
             
+            # Ключ 'ID номер' должен существовать, если разделитель определен верно
             student_id = row.get('ID номер')
             
             if student_id:
@@ -100,11 +113,14 @@ def parse_csv_data(csv_content: str) -> bool:
                     'Количество пропусков': absences
                 }
         
-        logger.info(f"✅ Данные успешно загружены. Загружено {len(STUDENT_DATA)} записей.")
+        logger.info(f"✅ Данные успешно загружены. Загружено {len(STUDENT_DATA)} записей. (Разделитель: '{delimiter_char}')")
         return True
     
     except Exception as e:
-        logger.error(f"❌ Ошибка при парсинге CSV-данных: {e}")
+        logger.error(f"❌ Ошибка при парсинге CSV-данных. Вероятно, неверно определен разделитель ({delimiter_char}) или неверный формат. Ошибка: {e}")
+        # Вывод первой строки для помощи в отладке
+        first_line = csv_content.splitlines()[0] if csv_content else "Данные отсутствуют"
+        logger.error(f"❌ Первая строка CSV (для отладки): '{first_line}'")
         return False
 
 
@@ -185,7 +201,8 @@ def convert_data_to_csv_string() -> str:
         
     fieldnames = ['ID номер', 'ФИО', 'Количество пропусков']
     output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';')
+    # Используем точку с запятой для записи, чтобы обеспечить стабильность формата
+    writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';') 
     
     writer.writeheader()
     for student_id, data in STUDENT_DATA.items():
@@ -245,6 +262,8 @@ async def process_data_request(update: Update, context: ContextTypes.DEFAULT_TYP
             f"📚 **Количество пропусков (в часах):** {absences}"
         )
     else:
+        # Это сообщение должно быть недостижимо, если ID найден в handle_message,
+        # но оставлено для безопасности.
         reply_text = (
             '❌ Ошибка данных. Пожалуйста, введите свой ID Номер снова.'
         )
@@ -266,7 +285,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await change_id_handler(update, context)
 
     else:
-        search_id = user_input
+        search_id = user_input.strip() # На всякий случай еще раз очищаем ввод пользователя
 
         if search_id not in STUDENT_DATA:
             message = (
