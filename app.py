@@ -66,19 +66,24 @@ def parse_csv_data(csv_content: str) -> bool:
     global STUDENT_DATA
     STUDENT_DATA = {}
     
-    # ФИКС 1: Удаление BOM (Byte Order Mark), если он есть (часто встречается в CSV из Excel).
-    # BOM может мешать корректному парсингу заголовка, если он добавляется к "ID номер".
+    # ФИКС 1: Удаление BOM (Byte Order Mark)
     if csv_content.startswith('\ufeff'):
         csv_content = csv_content.lstrip('\ufeff')
         logger.info("⚠️ Обнаружен и удален BOM (Byte Order Mark) из CSV-содержимого.")
         
-    csvfile = io.StringIO(csv_content)
-    
     try:
-        # ФИКС 2: Принудительно устанавливаем разделитель ';', так как он используется при записи и в исходном файле.
         delimiter_char = ';' 
         
-        reader = csv.DictReader(csvfile, delimiter=delimiter_char)
+        # ФИКС 2: Самое надежное чтение строк из строковой переменной.
+        # splitlines() корректно обрабатывает \n, \r, и \r\n, решая проблему "0 записей".
+        csv_lines = csv_content.splitlines() 
+        
+        # Создаем DictReader на основе списка строк
+        reader = csv.DictReader(csv_lines, delimiter=delimiter_char)
+        
+        # Логируем заголовки, которые видит DictReader (для отладки)
+        if reader.fieldnames:
+            logger.info(f"🔍 Заголовки, прочитанные DictReader: {reader.fieldnames}")
         
         for row in reader:
             # --- СЕКЦИЯ ПАРСИНГА: Очистка ключей и защита от NoneType ---
@@ -93,10 +98,7 @@ def parse_csv_data(csv_content: str) -> bool:
             row = processed_row
             # --- КОНЕЦ СЕКЦИИ ПАРСИНГА
             
-            # Получаем ID, который является ключом в словаре.
             student_id_raw = row.get('ID номер')
-            
-            # CRITICAL: Гарантируем, что ID, используемый как ключ, не содержит никаких пробелов или невидимых символов.
             student_id = student_id_raw.strip() if student_id_raw else None 
             
             if student_id:
