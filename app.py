@@ -11,8 +11,8 @@ from telegram.ext import (
     ApplicationBuilder, ConversationHandler
 )
 from dotenv import load_dotenv
-from fastapi import FastAPI # Новый импорт для веб-сервера
-import uvicorn # Новый импорт для запуска сервера
+from fastapi import FastAPI, Request, HTTPException # Добавлены Request, HTTPException
+import uvicorn 
 
 load_dotenv() 
 
@@ -32,9 +32,8 @@ def get_main_keyboard():
 def remove_keyboard():
     return ReplyKeyboardRemove()
 
-# --- ПАРАМЕТРЫ GITHUB (Убедитесь, что они установлены в переменных окружения Render) ---
+# --- ПАРАМЕТРЫ GITHUB ---
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-# Ожидаемый формат: USERNAME/REPO_NAME/BRANCH_NAME/разраб.csv
 REPO_DETAILS_FULL = os.getenv("GIT_REPO_DETAILS")
 CSV_URL = os.getenv("CSV_URL") 
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", 1234567890)) 
@@ -42,7 +41,6 @@ ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", 1234567890))
 # --- ПАРАМЕТРЫ WEBHOOK (Для Render) ---
 WEBHOOK_PATH = "/telegram" 
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-# Порт 10000 используется по умолчанию на Render
 PORT = int(os.getenv("PORT", 10000))
 LISTEN_HOST = os.getenv("HOST", "0.0.0.0")
 TELEGRAM_API_URL = "https://api.telegram.org/bot"
@@ -57,8 +55,12 @@ logger = logging.getLogger(__name__)
 # --- ДАННЫЕ СТУДЕНТОВ ---
 STUDENT_DATA: Dict[str, Dict[str, Any]] = {} 
 
+# --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР PTB Application ---
+# Он нужен, чтобы быть доступным из асинхронной функции telegram_webhook
+application: Application = None 
 
-# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ ---
+
+# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ (без изменений) ---
 def parse_csv_data(csv_content: str) -> bool:
     """Парсит содержимое CSV-файла (строка) и заполняет STUDENT_DATA."""
     global STUDENT_DATA
@@ -115,7 +117,7 @@ def load_data_from_git() -> bool:
         return False
 
 
-# --- ФУНКЦИИ РЕДАКТИРОВАНИЯ ДАННЫХ В GIT ---
+# --- ФУНКЦИИ РЕДАКТИРОВАНИЯ ДАННЫХ В GIT (без изменений) ---
 def update_github_file(new_csv_content: str, commit_message: str) -> bool:
     """Обновляет файл разраб.csv на GitHub через API."""
     if not GITHUB_TOKEN or not REPO_DETAILS_FULL:
@@ -172,7 +174,6 @@ def convert_data_to_csv_string() -> str:
         
     fieldnames = ['ID номер', 'ФИО', 'Количество пропусков']
     output = io.StringIO()
-    # Используем DictWriter для записи в CSV
     writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';')
     
     writer.writeheader()
@@ -187,8 +188,7 @@ def convert_data_to_csv_string() -> str:
     return output.getvalue()
 
 
-# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ ---
-
+# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ (без изменений) ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает команду /start."""
     user_id = context.user_data.get(USER_ID_KEY)
@@ -202,7 +202,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         reply_text = (
             'Привет! 👋 Я бот для проверки пропусков в ВУЗе.\n'
-            'Для начала работы, пожалуйста, **введите свой ID Номер** (номер студенческого билета).'
+            'Для начала работы, пожалуйста, **введите свой ID Номер** (например, `2502954`).'
         )
         keyboard = remove_keyboard()
 
@@ -285,8 +285,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             '🤔 Извините, я не понимаю. Введите ваш ID Номер или нажмите /start.'
         )
 
-# --- КОМАНДЫ АДМИНИСТРАТОРА ---
-
+# --- КОМАНДЫ АДМИНИСТРАТОРА (без изменений) ---
 async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда для администратора, чтобы принудительно обновить данные из Git."""
     
@@ -306,7 +305,7 @@ async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "❌ Ошибка загрузки данных. Проверьте логи и переменную CSV_URL."
         )
 
-# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) ---
+# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler - без изменений) ---
 
 async def start_edit_pass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начинает процесс редактирования пропусков."""
@@ -405,16 +404,46 @@ async def cancel_edit_pass(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР FASTAPI (для Uvicorn) ---
 fastapi_app = FastAPI()
 
-# Health Check Endpoint для Uptime Robot
+# Health Check Endpoint для Uptime Robot (Остается без изменений!)
 @fastapi_app.get("/")
 def health_check():
     """Возвращает HTTP 200 OK для мониторинга Uptime Robot."""
     return {"status": "ok", "app": "Telegram Bot Webhook"}
 
+# Webhook Endpoint (РУЧНОЕ УПРАВЛЕНИЕ)
+@fastapi_app.post(WEBHOOK_PATH)
+async def telegram_webhook(request: Request):
+    """Принимает POST-запросы от Telegram и вручную передает их в PTB."""
+    global application
+
+    if application is None:
+        logger.error("PTB Application не инициализирован.")
+        # Возвращаем 503, если приложение еще не готово
+        raise HTTPException(status_code=503, detail="Bot application not initialized.")
+
+    try:
+        # 1. Получаем JSON-тело запроса
+        update_json = await request.json()
+        
+        # 2. Преобразуем JSON в объект telegram.Update
+        update = Update.de_json(update_json, application.bot)
+
+        # 3. Обрабатываем обновление с помощью PTB Application
+        await application.process_update(update)
+        
+        # 4. Всегда возвращаем HTTP 200 OK, чтобы Telegram не повторял запрос
+        return {"status": "ok"}
+    
+    except Exception as e:
+        logger.error(f"❌ Ошибка обработки Telegram update: {e}")
+        # Возвращаем 200 OK, но с пометкой об ошибке в теле
+        return {"status": "error", "message": "Internal error processing update"}
+
 
 # --- ГЛАВНАЯ ФУНКЦИЯ ---
-def init_application() -> Application:
-    """Инициализирует и настраивает PTB Application."""
+def init_application() -> None:
+    """Инициализирует и настраивает PTB Application, устанавливает WebHook."""
+    global application
     
     # 1. Первая загрузка данных при старте сервиса
     load_data_from_git()
@@ -430,7 +459,7 @@ def init_application() -> Application:
         .token(token) \
         .build()
 
-    # 4. Добавление обработчиков
+    # 4. Добавление обработчиков (без изменений)
     edit_pass_handler = ConversationHandler(
         entry_points=[CommandHandler("edit_pass", start_edit_pass_command)],
         states={
@@ -445,25 +474,37 @@ def init_application() -> Application:
     application.add_handler(edit_pass_handler) 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # 5. Настройка WebHook в PTB
-    application.run_webhook(
-        listen=LISTEN_HOST,
-        port=PORT,
-        url_path=WEBHOOK_PATH,
-        webhook_url=f"{WEBHOOK_URL}{WEBHOOK_PATH}" if WEBHOOK_URL else "Неизвестно",
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES,
-        webhook_server=fastapi_app # Интегрируем PTB в наш FastAPI инстанс
-    )
+    # 5. Установка WebHook (вручную, без run_webhook!)
+    webhook_url_full = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
+    
+    if WEBHOOK_URL and 'http' in WEBHOOK_URL:
+        try:
+            logger.info(f"Setting webhook to: {webhook_url_full}")
+            # Отправляем запрос Telegram API для установки WebHook
+            application.bot.set_webhook(
+                url=webhook_url_full,
+                allowed_updates=Update.ALL_TYPES
+            )
+            logger.info("✅ Webhook set successfully.")
+        except Exception as e:
+            logger.error(f"❌ Failed to set webhook: {e}")
+    else:
+        logger.warning("⚠️ WEBHOOK_URL environment variable is missing or invalid. Webhook might not be set.")
+    
+    # Начинаем работу PTB Application
+    application.start()
     
     logger.info(f"🚀 Бот настроен. Сервер будет запущен Uvicorn'ом на {LISTEN_HOST}:{PORT}")
-    return application
 
-# Инициализация приложения при старте Uvicorn
-try:
-    init_application()
-except ValueError:
-    logger.error("Критическая ошибка инициализации: не удалось запустить приложение из-за отсутствия токена.")
 
-# Uvicorn будет использовать глобальную переменную fastapi_app для запуска
-# Запуск выполняется командой `uvicorn app:fastapi_app --host 0.0.0.0 --port 10000`
+if __name__ == '__main__':
+    # Эта секция инициализирует PTB Application перед тем, как Uvicorn начнет слушать
+    try:
+        init_application()
+    except ValueError:
+        logger.error("Критическая ошибка инициализации: не удалось запустить приложение из-за отсутствия токена.")
+
+    # Uvicorn теперь будет использовать глобальный fastapi_app, который включает:
+    # 1. Health Check на /
+    # 2. Обработчик WebHook на /telegram, который вызывает PTB.
+    pass
