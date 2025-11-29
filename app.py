@@ -139,15 +139,6 @@ async def process_data_request(update: Update, context: ContextTypes.DEFAULT_TYP
         name = student.get('ФИО', 'Неизвестно')
         absences = student.get('Количество пропусков', 0)
         
-        # Определяем статус и цвет эмодзи
-        if absences >= 50:
-            status = f"🔴 КРИТИЧЕСКИЙ УРОВЕНЬ"
-        elif absences >= 20:
-            status = f"🟠 ВЫСОКИЙ УРОВЕНЬ"
-        elif absences >= 5:
-            status = f"🟡 СРЕДНИЙ УРОВЕНЬ"
-        else:
-            status = f"🟢 НИЗКИЙ УРОВЕНЬ"
             
         reply_text = (
             f"👤 **Студент:** {name}\n"
