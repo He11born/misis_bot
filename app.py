@@ -6,8 +6,8 @@ import requests
 import io
 import base64
 import asyncio 
-import datetime # NEW: для работы с датами
-import json # NEW: для парсинга ответа API
+import datetime 
+import json 
 
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -15,7 +15,8 @@ from telegram.ext import (
     ApplicationBuilder, ConversationHandler
 )
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, HTTPException 
+# Импортируем Response для более гибкого управления HTTP-ответами
+from fastapi import FastAPI, Request, HTTPException, Response 
 
 load_dotenv() 
 
@@ -65,13 +66,12 @@ LAST_UPDATED_TIME: str = "Неизвестно"
 application: Application = None 
 
 
-# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ (ФИКС) ---
+# --- ФУНКЦИИ ЗАГРУЗКИ / ПАРСИНГА ДАННЫХ ---
 def parse_csv_data(csv_content: str) -> bool:
     """Парсит содержимое CSV-файла (строка) и заполняет STUDENT_DATA."""
     global STUDENT_DATA
     STUDENT_DATA = {}
     
-    # ФИКС 1: Удаление BOM (Byte Order Mark)
     if csv_content.startswith('\ufeff'):
         csv_content = csv_content.lstrip('\ufeff')
         logger.info("⚠️ Обнаружен и удален BOM (Byte Order Mark) из CSV-содержимого.")
@@ -79,69 +79,48 @@ def parse_csv_data(csv_content: str) -> bool:
     try:
         delimiter_char = ';' 
         
-        # ФИКС 2: Использование splitlines() для надежной обработки переводов строк.
-        # Агрессивно удаляем все пробелы/переводы строк вокруг содержимого.
         csv_lines = csv_content.strip().splitlines() 
         
-        # КРИТИЧЕСКИЙ ФИКС 3: Проверка на пустое содержимое после очистки
         if not csv_lines:
             logger.warning("❌ CSV-содержимое пусто или состоит только из пробельных символов. Данные не загружены.")
             return False
 
-        # --- КРИТИЧЕСКИЙ ФИКС 4: Манипуляция с заголовком и передача DictReader только данных ---
-        
-        # 1. Читаем и очищаем первую строку (заголовок)
-        # БЕЗОПАСНАЯ ПРОВЕРКА: Проверяем, что первый элемент существует и очищаем его.
         header_line = csv_lines[0].strip()
         
         if not header_line:
              logger.error("❌ Первая строка CSV (заголовок) пуста после очистки. Парсинг невозможен.")
              return False
              
-        # Разбиваем по разделителю и очищаем каждый заголовок от любых пробелов.
         fieldnames = [name.strip() for name in header_line.split(delimiter_char)]
-        
-        # Защита от пустых имен полей (например, если строка была "ID; ;Пропуски")
         fieldnames = [name for name in fieldnames if name]
         
         if not fieldnames:
              logger.error("❌ Заголовки CSV-файла пусты или содержат пустые столбцы после очистки. Парсинг невозможен.")
              return False
 
-        # 2. Передаем DictReader очищенные заголовки и остальные строки (данные)
-        # Мы используем список строк, начиная со второй (индекс 1).
         data_lines = csv_lines[1:] 
         
-        # Если есть только заголовок и нет данных
         if not data_lines:
              logger.warning(f"⚠️ В CSV-файле найден только заголовок, нет строк данных. Проверьте ваш CSV. Заголовок: {fieldnames}")
-             return True # Возвращаем True, т.к. парсинг заголовка успешен, но данных нет.
+             return True 
 
-        # Создаем DictReader с ЯВНО УКАЗАННЫМИ И ОЧИЩЕННЫМИ заголовками
-        # Используем io.StringIO для имитации файлового объекта из списка строк
         data_io = io.StringIO('\n'.join(data_lines))
         reader = csv.DictReader(data_io, fieldnames=fieldnames, delimiter=delimiter_char)
         
-        # Логируем заголовки, которые мы принудительно установили
         logger.info(f"🔍 Заголовки, использованные для DictReader: {fieldnames}")
 
         record_count = 0
         for row in reader:
-            # Пропускаем пустые строки, которые могли возникнуть из-за splitlines
             if not row or all(not v for v in row.values()):
                  continue
                  
             record_count += 1
-            # --- СЕКЦИЯ ПАРСИНГА: Очистка значений ---
             processed_row = {}
             for k, v in row.items():
-                # Значения могут содержать пробелы, удаляем их.
                 safe_v = v if v is not None else '' 
                 processed_row[k] = safe_v.strip()
             row = processed_row
-            # --- КОНЕЦ СЕКЦИИ ПАРСИНГА
             
-            # Используем очищенные ключи из fieldnames
             student_id_key = 'ID номер'
             absences_key = 'Количество пропусков'
             fio_key = 'ФИО'
@@ -166,7 +145,6 @@ def parse_csv_data(csv_content: str) -> bool:
     
     except Exception as e:
         logger.error(f"❌ Ошибка при парсинге CSV-данных. Проверьте заголовок 'ID номер' и разделитель (должен быть ';'). Ошибка: {e}")
-        # Для лучшей отладки, если произошла ошибка, попытаемся вывести первую строку
         try:
              first_line = csv_content.strip().splitlines()[0] if csv_content.strip() else "Данные отсутствуют или пусты"
         except:
@@ -183,20 +161,18 @@ def load_data_from_git() -> bool:
     """
     global LAST_UPDATED_TIME
     
+    # ... (Остальная часть функции load_data_from_git остается без изменений)
     if not CSV_URL or not GITHUB_TOKEN or not REPO_DETAILS_FULL:
         logger.error("❌ Отсутствуют необходимые переменные: CSV_URL, GITHUB_TOKEN или GIT_REPO_DETAILS. Дата обновления будет 'Неизвестно'.")
         LAST_UPDATED_TIME = "Неизвестно"
         
-        # Если отсутствует только токен/детали, пытаемся хотя бы загрузить CSV по прямой ссылке
         if not CSV_URL:
              return False
     else:
         # 1. Получение даты последнего обновления (только если все переменные есть)
         try:
-            # user/repo/branch/filepath
             user, repo, branch, filepath = REPO_DETAILS_FULL.split('/', 3)
             
-            # Используем Commit API для получения даты последнего коммита для этого файла
             commits_url = f"https://api.github.com/repos/{user}/{repo}/commits?path={filepath}&sha={branch}&per_page=1"
             headers = {
                 "Authorization": f"token {GITHUB_TOKEN}",
@@ -210,30 +186,22 @@ def load_data_from_git() -> bool:
             if commit_list and 'commit' in commit_list[0]:
                 commit_date_iso = commit_list[0]['commit']['author']['date']
                 
-                # Парсинг ISO даты и форматирование
-                # Замена 'Z' на '+00:00' для совместимости с fromisoformat
                 dt_utc = datetime.datetime.fromisoformat(commit_date_iso.replace('Z', '+00:00'))
-                # Перевод в Московское время (UTC+3) для удобства
                 dt_msk = dt_utc.astimezone(datetime.timezone(datetime.timedelta(hours=3))) 
                 
-                # Формат: 20.11.2023 в 15:30 MSK
                 LAST_UPDATED_TIME = dt_msk.strftime("%d.%m.%Y в %H:%M MSK")
                 logger.info(f"✅ Дата последнего обновления: {LAST_UPDATED_TIME}")
                 
         except Exception as e:
             logger.error(f"❌ Ошибка получения даты обновления (Commit API). Проверьте GITHUB_TOKEN и REPO_DETAILS_FULL. Ошибка: {e}")
-            LAST_UPDATED_TIME = "Неизвестно" # Сброс, если ошибка
-            # Продолжаем попытку загрузить контент
+            LAST_UPDATED_TIME = "Неизвестно" 
             
     # 2. Получение RAW контента 
     try:
-        # Увеличиваем таймаут на случай медленного ответа от GitHub
         response = requests.get(CSV_URL, timeout=10)
-        # Устанавливаем кодировку явно на UTF-8, чтобы избежать ошибок
         response.encoding = 'utf-8' 
         response.raise_for_status()
         
-        # ДОБАВЛЕННАЯ ДИАГНОСТИКА:
         content_start = response.text[:100].replace('\n', '\\n').replace('\r', '\\r')
         logger.info(f"✅ Успешный ответ (HTTP {response.status_code}). Начало контента: '{content_start}...'")
         
@@ -304,7 +272,6 @@ def convert_data_to_csv_string() -> str:
         
     fieldnames = ['ID номер', 'ФИО', 'Количество пропусков']
     output = io.StringIO()
-    # Используем точку с запятой для записи, чтобы обеспечить стабильность формата
     writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';') 
     
     writer.writeheader()
@@ -319,7 +286,7 @@ def convert_data_to_csv_string() -> str:
     return output.getvalue()
 
 
-# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ ---
+# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ (Без изменений) ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает команду /start."""
@@ -329,7 +296,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_text = (
             f'С возвращением! Ваш текущий ID Номер: **{user_id}**.\n'
             'Нажмите кнопку "📊 Посмотреть количество пропусков" ниже, чтобы узнать актуальные данные.\n\n'
-            f'⏳ *Данные предоставлены за {LAST_UPDATED_TIME}.*' # ДОБАВЛЕНИЕ ДАТЫ
+            f'⏳ *Данные предоставлены за {LAST_UPDATED_TIME}.*' 
         )
         keyboard = get_main_keyboard()
     else:
@@ -364,11 +331,9 @@ async def process_data_request(update: Update, context: ContextTypes.DEFAULT_TYP
             f"👤 **Студент:** {name}\n"
             f"🆔 **ID:** `{search_id}`\n"
             f"📚 **Количество пропусков (в часах):** {absences}\n\n"
-            f'⏳ *Данные предоставлены за {LAST_UPDATED_TIME}.*' # ДОБАВЛЕНИЕ ДАТЫ
+            f'⏳ *Данные предоставлены за {LAST_UPDATED_TIME}.*' 
         )
     else:
-        # Это сообщение должно быть недостижимо, если ID найден в handle_message,
-        # но оставлено для безопасности.
         reply_text = (
             '❌ Ошибка данных. Пожалуйста, введите свой ID Номер снова.'
         )
@@ -390,7 +355,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await change_id_handler(update, context)
 
     else:
-        search_id = user_input.strip() # На всякий случай еще раз очищаем ввод пользователя
+        search_id = user_input.strip() 
 
         if search_id not in STUDENT_DATA:
             message = (
@@ -421,7 +386,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             '🤔 Извините, я не понимаю. Введите ваш ID Номер или нажмите /start.'
         )
 
-# --- КОМАНДЫ АДМИНИСТРАТОРА ---
+# --- КОМАНДЫ АДМИНИСТРАТОРА (Без изменений) ---
 async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда для администратора, чтобы принудительно обновить данные из Git."""
     
@@ -441,7 +406,7 @@ async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "❌ Ошибка загрузки данных. Проверьте логи и переменную CSV_URL."
         )
 
-# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) ---
+# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) (Без изменений) ---
 
 async def start_edit_pass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начинает процесс редактирования пропусков."""
@@ -510,8 +475,6 @@ async def get_absences_count(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("⏳ Данные обновлены локально. Отправляю коммит на GitHub...")
     
     if update_github_file(new_csv_content, commit_message):
-        # *ВНИМАНИЕ:* После успешного коммита, чтобы обновить отображаемую дату LAST_UPDATED_TIME, 
-        # администратору нужно будет запустить /reload_data.
         final_message = (
             f"🎉 Успешно!\n"
             f"Пропуски для **{student_name}** (`{student_id}`) установлены на **{new_absences}**.\n"
@@ -539,14 +502,28 @@ async def cancel_edit_pass(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return ConversationHandler.END
 
 
-# --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР FASTAPI (для Uvicorn - Без изменений) ---
+# --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР FASTAPI ---
 fastapi_app = FastAPI()
 
 # Health Check Endpoint 
-@fastapi_app.get("/")
-def health_check():
-    """Возвращает HTTP 200 OK для мониторинга Uptime Robot."""
+# ДОБАВЛЕНО: Обработка HEAD запросов для совместимости с мониторами
+@fastapi_app.get("/", status_code=200)
+async def health_check_get(request: Request):
+    """
+    Отвечает на GET-запросы к корневому пути. 
+    Используется для проверки работоспособности сервиса (Health Check).
+    """
+    logger.info(f"✅ Health Check (GET /) received from {request.client.host}. Responding 200 OK.")
     return {"status": "ok", "app": "Telegram Bot Webhook"}
+
+@fastapi_app.head("/", status_code=200)
+async def health_check_head(request: Request):
+    """
+    Отвечает на HEAD-запросы к корневому пути. 
+    Используется мониторами для быстрой проверки. Возвращает только заголовки (200 OK).
+    """
+    logger.info(f"✅ Health Check (HEAD /) received from {request.client.host}. Responding 200 OK.")
+    return Response(status_code=200) # FastAPI автоматически отсылает только заголовки
 
 # Webhook Endpoint 
 @fastapi_app.post(WEBHOOK_PATH)
@@ -586,7 +563,6 @@ async def startup_event():
         .token(token) \
         .build()
 
-    # Настройка ConversationHandler для редактирования
     edit_pass_handler = ConversationHandler(
         entry_points=[CommandHandler("edit_pass", start_edit_pass_command)],
         states={
