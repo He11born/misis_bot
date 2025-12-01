@@ -6,6 +6,8 @@ import requests
 import io
 import base64
 import asyncio 
+import datetime # NEW: для работы с датами
+import json # NEW: для парсинга ответа API
 
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
@@ -35,6 +37,7 @@ def remove_keyboard():
 
 # --- ПАРАМЕТРЫ GITHUB ---
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+# Ожидается формат: user/repo/branch/filepath (например: He11born/misis_bot/main/разраб.csv)
 REPO_DETAILS_FULL = os.getenv("GIT_REPO_DETAILS")
 CSV_URL = os.getenv("CSV_URL") 
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", 1234567890)) 
@@ -55,6 +58,8 @@ logger = logging.getLogger(__name__)
 
 # --- ДАННЫЕ СТУДЕНТОВ ---
 STUDENT_DATA: Dict[str, Dict[str, Any]] = {} 
+# --- ГЛОБАЛЬНАЯ ПЕРЕМЕННАЯ ДЛЯ ДАТЫ ОБНОВЛЕНИЯ ---
+LAST_UPDATED_TIME: str = "Неизвестно" 
 
 # --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР PTB Application ---
 application: Application = None 
@@ -172,18 +177,55 @@ def parse_csv_data(csv_content: str) -> bool:
 
 
 def load_data_from_git() -> bool:
-    """Загружает данные, скачивая файл с GitHub по прямому URL."""
-    if not CSV_URL:
-        logger.error("❌ Переменная CSV_URL не установлена. Загрузка данных невозможна.")
-        return False
+    """
+    Загружает данные, скачивая файл с GitHub по прямому URL, 
+    и получает дату последнего обновления через GitHub API.
+    """
+    global LAST_UPDATED_TIME
     
-    # КРИТИЧЕСКАЯ ДИАГНОСТИКА: Предупреждение, если URL не похож на RAW
-    if "github.com/blob/" in CSV_URL or "raw.githubusercontent.com" not in CSV_URL:
-        logger.warning(
-            "⚠️ ВНИМАНИЕ: Проверьте переменную CSV_URL! "
-            "Используйте URL сырого файла, начинающийся с 'raw.githubusercontent.com'."
-        )
-    
+    if not CSV_URL or not GITHUB_TOKEN or not REPO_DETAILS_FULL:
+        logger.error("❌ Отсутствуют необходимые переменные: CSV_URL, GITHUB_TOKEN или GIT_REPO_DETAILS. Дата обновления будет 'Неизвестно'.")
+        LAST_UPDATED_TIME = "Неизвестно"
+        
+        # Если отсутствует только токен/детали, пытаемся хотя бы загрузить CSV по прямой ссылке
+        if not CSV_URL:
+             return False
+    else:
+        # 1. Получение даты последнего обновления (только если все переменные есть)
+        try:
+            # user/repo/branch/filepath
+            user, repo, branch, filepath = REPO_DETAILS_FULL.split('/', 3)
+            
+            # Используем Commit API для получения даты последнего коммита для этого файла
+            commits_url = f"https://api.github.com/repos/{user}/{repo}/commits?path={filepath}&sha={branch}&per_page=1"
+            headers = {
+                "Authorization": f"token {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            response_commit = requests.get(commits_url, headers=headers, timeout=5)
+            response_commit.raise_for_status()
+            commit_list = response_commit.json()
+            
+            if commit_list and 'commit' in commit_list[0]:
+                commit_date_iso = commit_list[0]['commit']['author']['date']
+                
+                # Парсинг ISO даты и форматирование
+                # Замена 'Z' на '+00:00' для совместимости с fromisoformat
+                dt_utc = datetime.datetime.fromisoformat(commit_date_iso.replace('Z', '+00:00'))
+                # Перевод в Московское время (UTC+3) для удобства
+                dt_msk = dt_utc.astimezone(datetime.timezone(datetime.timedelta(hours=3))) 
+                
+                # Формат: 20.11.2023 в 15:30 MSK
+                LAST_UPDATED_TIME = dt_msk.strftime("%d.%m.%Y в %H:%M MSK")
+                logger.info(f"✅ Дата последнего обновления: {LAST_UPDATED_TIME}")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения даты обновления (Commit API). Проверьте GITHUB_TOKEN и REPO_DETAILS_FULL. Ошибка: {e}")
+            LAST_UPDATED_TIME = "Неизвестно" # Сброс, если ошибка
+            # Продолжаем попытку загрузить контент
+            
+    # 2. Получение RAW контента 
     try:
         # Увеличиваем таймаут на случай медленного ответа от GitHub
         response = requests.get(CSV_URL, timeout=10)
@@ -277,7 +319,7 @@ def convert_data_to_csv_string() -> str:
     return output.getvalue()
 
 
-# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ (Без изменений) ---
+# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает команду /start."""
@@ -286,7 +328,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if user_id:
         reply_text = (
             f'С возвращением! Ваш текущий ID Номер: **{user_id}**.\n'
-            'Нажмите кнопку "📊 Посмотреть количество пропусков" ниже, чтобы узнать актуальные данные.'
+            'Нажмите кнопку "📊 Посмотреть количество пропусков" ниже, чтобы узнать актуальные данные.\n\n'
+            f'⏳ *Данные предоставлены за {LAST_UPDATED_TIME}.*' # ДОБАВЛЕНИЕ ДАТЫ
         )
         keyboard = get_main_keyboard()
     else:
@@ -320,7 +363,8 @@ async def process_data_request(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_text = (
             f"👤 **Студент:** {name}\n"
             f"🆔 **ID:** `{search_id}`\n"
-            f"📚 **Количество пропусков (в часах):** {absences}"
+            f"📚 **Количество пропусков (в часах):** {absences}\n\n"
+            f'⏳ *Данные предоставлены за {LAST_UPDATED_TIME}.*' # ДОБАВЛЕНИЕ ДАТЫ
         )
     else:
         # Это сообщение должно быть недостижимо, если ID найден в handle_message,
@@ -377,7 +421,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             '🤔 Извините, я не понимаю. Введите ваш ID Номер или нажмите /start.'
         )
 
-# --- КОМАНДЫ АДМИНИСТРАТОРА (Без изменений) ---
+# --- КОМАНДЫ АДМИНИСТРАТОРА ---
 async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда для администратора, чтобы принудительно обновить данные из Git."""
     
@@ -390,14 +434,14 @@ async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if load_data_from_git():
         await update.message.reply_text(
-            f"✅ Данные успешно обновлены! Загружено {len(STUDENT_DATA)} записей."
+            f"✅ Данные успешно обновлены! Загружено {len(STUDENT_DATA)} записей. Дата: {LAST_UPDATED_TIME}"
         )
     else:
         await update.message.reply_text(
             "❌ Ошибка загрузки данных. Проверьте логи и переменную CSV_URL."
         )
 
-# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler - Без изменений) ---
+# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) ---
 
 async def start_edit_pass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начинает процесс редактирования пропусков."""
@@ -466,10 +510,12 @@ async def get_absences_count(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("⏳ Данные обновлены локально. Отправляю коммит на GitHub...")
     
     if update_github_file(new_csv_content, commit_message):
+        # *ВНИМАНИЕ:* После успешного коммита, чтобы обновить отображаемую дату LAST_UPDATED_TIME, 
+        # администратору нужно будет запустить /reload_data.
         final_message = (
             f"🎉 Успешно!\n"
             f"Пропуски для **{student_name}** (`{student_id}`) установлены на **{new_absences}**.\n"
-            "Изменение зафиксировано на GitHub."
+            "Изменение зафиксировано на GitHub. Чтобы обновить дату в сообщениях, выполните команду /reload_data."
         )
     else:
         final_message = (
@@ -528,6 +574,7 @@ async def startup_event():
     """Выполняется при запуске Uvicorn. Инициализирует PTB и устанавливает WebHook."""
     global application
     
+    # 1. Загрузка данных (включая попытку получить дату обновления)
     load_data_from_git()
     
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -539,6 +586,7 @@ async def startup_event():
         .token(token) \
         .build()
 
+    # Настройка ConversationHandler для редактирования
     edit_pass_handler = ConversationHandler(
         entry_points=[CommandHandler("edit_pass", start_edit_pass_command)],
         states={
@@ -548,6 +596,7 @@ async def startup_event():
         fallbacks=[CommandHandler('cancel', cancel_edit_pass)],
     )
 
+    # Добавление обработчиков
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("reload_data", reload_data_command)) 
     application.add_handler(edit_pass_handler) 
