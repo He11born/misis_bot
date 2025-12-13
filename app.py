@@ -17,6 +17,9 @@ from telegram.ext import (
 from dotenv import load_dotenv
 # Импортируем Response для более гибкого управления HTTP-ответами
 from fastapi import FastAPI, Request, HTTPException, Response 
+from fastapi.responses import JSONResponse
+# ИМПОРТ ДЛЯ ОБСЛУЖИВАНИЯ АДМИН-ПАНЕЛИ
+from fastapi.staticfiles import StaticFiles 
 
 load_dotenv() 
 
@@ -161,7 +164,7 @@ def load_data_from_git() -> bool:
     """
     global LAST_UPDATED_TIME
     
-    # ... (Остальная часть функции load_data_from_git остается без изменений)
+    # --- 1. Получение даты последнего обновления ---
     if not CSV_URL or not GITHUB_TOKEN or not REPO_DETAILS_FULL:
         logger.error("❌ Отсутствуют необходимые переменные: CSV_URL, GITHUB_TOKEN или GIT_REPO_DETAILS. Дата обновления будет 'Неизвестно'.")
         LAST_UPDATED_TIME = "Неизвестно"
@@ -169,7 +172,7 @@ def load_data_from_git() -> bool:
         if not CSV_URL:
              return False
     else:
-        # 1. Получение даты последнего обновления (только если все переменные есть)
+        # Получение даты последнего обновления
         try:
             user, repo, branch, filepath = REPO_DETAILS_FULL.split('/', 3)
             
@@ -192,11 +195,14 @@ def load_data_from_git() -> bool:
                 LAST_UPDATED_TIME = dt_msk.strftime("%d.%m.%Y в %H:%M MSK")
                 logger.info(f"✅ Дата последнего обновления: {LAST_UPDATED_TIME}")
                 
+            else:
+                LAST_UPDATED_TIME = "Не найдено"
+                
         except Exception as e:
             logger.error(f"❌ Ошибка получения даты обновления (Commit API). Проверьте GITHUB_TOKEN и REPO_DETAILS_FULL. Ошибка: {e}")
             LAST_UPDATED_TIME = "Неизвестно" 
             
-    # 2. Получение RAW контента 
+    # --- 2. Получение RAW контента ---
     try:
         response = requests.get(CSV_URL, timeout=10)
         response.encoding = 'utf-8' 
@@ -215,9 +221,9 @@ def load_data_from_git() -> bool:
         return False
 
 
-# --- ФУНКЦИИ РЕДАКТИРОВАНИЯ ДАННЫХ В GIT (Без изменений) ---
+# --- ФУНКЦИИ РЕДАКТИРОВАНИЯ ДАННЫХ В GIT ---
 def update_github_file(new_csv_content: str, commit_message: str) -> bool:
-    """Обновляет файл разраб.csv на GitHub через API."""
+    """Обновляет файл разраб.csv на GitHub через API. Возвращает True/False."""
     if not GITHUB_TOKEN or not REPO_DETAILS_FULL:
         logger.error("❌ Отсутствуют GITHUB_TOKEN или GIT_REPO_DETAILS.")
         return False
@@ -232,7 +238,7 @@ def update_github_file(new_csv_content: str, commit_message: str) -> bool:
     contents_url = f"https://api.github.com/repos/{user}/{repo}/contents/{filepath}?ref={branch}"
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
+        "Accept": "application/vnd.github.com.v3.sha", # Более точный Accept для SHA
     }
     
     try:
@@ -240,6 +246,7 @@ def update_github_file(new_csv_content: str, commit_message: str) -> bool:
         response.raise_for_status()
         current_file_data = response.json()
         current_sha = current_file_data['sha']
+        logger.info(f"Получен текущий SHA: {current_sha}")
     except requests.exceptions.RequestException as e:
         logger.error(f"❌ Ошибка получения SHA файла: {e}")
         return False
@@ -257,8 +264,20 @@ def update_github_file(new_csv_content: str, commit_message: str) -> bool:
     # 3. Отправляем новый контент
     try:
         response = requests.put(contents_url, headers=headers, json=payload)
+        
+        if response.status_code == 409:
+            logger.error(f"❌ Конфликт (409) при коммите: файл был изменен.")
+            # Для API Proxy нужно будет обернуть это в HTTPException(409)
+            # Но для сохранения сигнатуры просто возвращаем False
+            return False 
+            
         response.raise_for_status()
+        
         logger.info(f"✅ Файл {filepath} успешно обновлен на ветке {branch}. Коммит: {response.json()['commit']['sha']}")
+        
+        # Обновляем локальный кэш сразу после успешного коммита
+        load_data_from_git()
+        
         return True
     except requests.exceptions.RequestException as e:
         logger.error(f"❌ Ошибка коммита на GitHub: {e}")
@@ -274,19 +293,35 @@ def convert_data_to_csv_string() -> str:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';') 
     
+    # 1. Записываем заголовок
     writer.writeheader()
+    
+    # 2. Записываем данные (используя отсортированные ID для сохранения порядка)
+    # NOTE: В исходном коде вы обходите STUDENT_DATA.items(). Для сохранения структуры CSV 
+    # нужно правильно восстановить словарь для записи, включая ID в строку данных.
+    
+    # Создаем временный список объектов, где ID является частью объекта, а не ключом.
+    data_for_writer = []
+    
+    # Создаем список ключей, которые есть в заголовке, чтобы избежать ошибок
+    data_keys = [k for k in STUDENT_DATA[next(iter(STUDENT_DATA))].keys()] if STUDENT_DATA else []
+    
+    # Порядок столбцов должен быть ID номер, ФИО, Количество пропусков
     for student_id, data in STUDENT_DATA.items():
         row = {
             'ID номер': student_id,
             'ФИО': data.get('ФИО', 'Неизвестно'),
             'Количество пропусков': data.get('Количество пропусков', 0)
         }
-        writer.writerow(row)
+        data_for_writer.append(row)
+        
+    # DictWriter будет использовать только ключи из fieldnames
+    writer.writerows(data_for_writer)
         
     return output.getvalue()
 
 
-# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ (Без изменений) ---
+# --- ОБРАБОТЧИКИ КОМАНД ПОЛЬЗОВАТЕЛЯ ---
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает команду /start."""
@@ -343,6 +378,7 @@ async def process_data_request(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обрабатывает текстовый ввод (как ИД) или нажатие кнопки."""
+    if not update.message or not update.message.text: return
     user_input = update.message.text.strip()
     search_id = None
 
@@ -386,7 +422,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             '🤔 Извините, я не понимаю. Введите ваш ID Номер или нажмите /start.'
         )
 
-# --- КОМАНДЫ АДМИНИСТРАТОРА (Без изменений) ---
+# --- КОМАНДЫ АДМИНИСТРАТОРА ---
 async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Команда для администратора, чтобы принудительно обновить данные из Git."""
     
@@ -406,7 +442,7 @@ async def reload_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "❌ Ошибка загрузки данных. Проверьте логи и переменную CSV_URL."
         )
 
-# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) (Без изменений) ---
+# --- ОБРАБОТЧИКИ ДЛЯ РЕДАКТИРОВАНИЯ ДАННЫХ (ConversationHandler) ---
 
 async def start_edit_pass_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начинает процесс редактирования пропусков."""
@@ -424,6 +460,7 @@ async def start_edit_pass_command(update: Update, context: ContextTypes.DEFAULT_
 
 async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает ID студента и запрашивает новое количество пропусков."""
+    if not update.message or not update.message.text: return GETTING_ID
     student_id = update.message.text.strip()
     
     if student_id not in STUDENT_DATA:
@@ -448,6 +485,7 @@ async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def get_absences_count(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Получает новое количество пропусков, обновляет данные локально и на GitHub."""
+    if not update.message or not update.message.text: return GETTING_ABSENCES
     new_absences_str = update.message.text.strip()
     
     try:
@@ -483,7 +521,7 @@ async def get_absences_count(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         final_message = (
             "⚠️ **Критическая ошибка коммита!**\n"
-            "Локальные данные обновлены, но коммит на GitHub не удался. Проверьте токен и логи."
+            "Локальные данные обновлены, но коммит на GitHub не удался (возможно, конфликт или неверный токен). Проверьте логи."
         )
 
     await update.message.reply_text(final_message, parse_mode='Markdown', reply_markup=get_main_keyboard())
@@ -505,25 +543,63 @@ async def cancel_edit_pass(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 # --- ГЛОБАЛЬНЫЙ ЭКЗЕМПЛЯР FASTAPI ---
 fastapi_app = FastAPI()
 
+
+# --- ЭНДПОИНТЫ FASTAPI ---
+
 # Health Check Endpoint 
-# ДОБАВЛЕНО: Обработка HEAD запросов для совместимости с мониторами
-@fastapi_app.get("/", status_code=200)
+@fastapi_app.get("/health", status_code=200) # Переносим health check на /health
 async def health_check_get(request: Request):
     """
-    Отвечает на GET-запросы к корневому пути. 
+    Отвечает на GET-запросы.
     Используется для проверки работоспособности сервиса (Health Check).
     """
-    logger.info(f"✅ Health Check (GET /) received from {request.client.host}. Responding 200 OK.")
+    logger.info(f"✅ Health Check (GET /health) received from {request.client.host}. Responding 200 OK.")
     return {"status": "ok", "app": "Telegram Bot Webhook"}
 
-@fastapi_app.head("/", status_code=200)
+@fastapi_app.head("/health", status_code=200) # Переносим health check на /health
 async def health_check_head(request: Request):
     """
-    Отвечает на HEAD-запросы к корневому пути. 
+    Отвечает на HEAD-запросы.
     Используется мониторами для быстрой проверки. Возвращает только заголовки (200 OK).
     """
-    logger.info(f"✅ Health Check (HEAD /) received from {request.client.host}. Responding 200 OK.")
-    return Response(status_code=200) # FastAPI автоматически отсылает только заголовки
+    logger.info(f"✅ Health Check (HEAD /health) received from {request.client.host}. Responding 200 OK.")
+    return Response(status_code=200)
+
+# API Proxy Endpoint для админ-панели (использует GITHUB_TOKEN с сервера)
+@fastapi_app.post("/api/update_data")
+async def update_data_proxy(request: Request):
+    """
+    Принимает новый CSV-контент и сообщение коммита с фронтенда 
+    и безопасно отправляет коммит в GitHub, используя GITHUB_TOKEN сервера.
+    """
+    try:
+        data = await request.json()
+        new_csv_content = data.get("new_csv_content")
+        commit_message = data.get("commit_message")
+        
+        if not new_csv_content or not commit_message:
+            raise HTTPException(status_code=400, detail="Отсутствует контент или сообщение коммита.")
+
+        logger.info(f"Запрос API Proxy: Попытка коммита с сообщением: '{commit_message}'")
+        
+        # Вызов существующей функции обновления Git
+        if update_github_file(new_csv_content, commit_message):
+            # После успешного коммита load_data_from_git() был вызван внутри update_github_file
+            return JSONResponse(content={"message": "Данные успешно сохранены на GitHub через прокси.", "last_updated": LAST_UPDATED_TIME})
+        else:
+            # Поскольку update_github_file возвращает False и при ошибке, и при 409 конфликте, 
+            # мы даем общий, но информативный ответ.
+            raise HTTPException(status_code=500, detail="Ошибка при создании коммита на GitHub. Проверьте токен, права доступа и логи сервера. Возможно, произошел конфликт версий файла (409).")
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Некорректный JSON в запросе.")
+    except HTTPException:
+        # Перебрасываем HTTPException
+        raise
+    except Exception as e:
+        logger.error(f"Критическая ошибка API-прокси: {e}")
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+
 
 # Webhook Endpoint 
 @fastapi_app.post(WEBHOOK_PATH)
@@ -544,7 +620,8 @@ async def telegram_webhook(request: Request):
         logger.error(f"❌ Ошибка обработки Telegram update: {e}")
         return {"status": "error", "message": "Internal error processing update"}
 
-# --- ФУНКЦИИ ЖИЗНЕННОГО ЦИКЛА FASTAPI (Без изменений) ---
+
+# --- ФУНКЦИИ ЖИЗНЕННОГО ЦИКЛА FASTAPI ---
 
 @fastapi_app.on_event("startup")
 async def startup_event():
@@ -605,3 +682,10 @@ async def shutdown_event():
     if application:
         await application.stop()
         logger.info("🛑 PTB Application stopped gracefully.")
+
+# --- ОБСЛУЖИВАНИЕ СТАТИЧЕСКИХ ФАЙЛОВ АДМИН-ПАНЕЛИ (ДОБАВЛЕНО) ---
+
+# Монтируем папку 'static' на корневой URL /. 
+# Это позволит FastAPI обслуживать index.html как основную страницу.
+# Я переместил health checks на /health, чтобы избежать конфликтов с index.html
+fastapi_app.mount("/", StaticFiles(directory="static", html=True), name="static")
