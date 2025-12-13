@@ -107,7 +107,7 @@
         const CSV_DELIMITER = ';';
 
         /**
-         * Отображает сообщение пользователю (вместо alert)
+         * Отображает сообщение пользователю
          */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
@@ -121,7 +121,6 @@
                 'info': ['bg-blue-100', 'border-blue-400', 'text-blue-700']
             };
             
-            // Сброс всех классов и применение нужных
             ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700'].forEach(c => box.classList.remove(c));
             box.classList.add(...(styles[type] || styles['info']));
 
@@ -135,37 +134,56 @@
          * Парсит CSV-строку в массив объектов.
          */
         function parseCSV(csvText, delimiter) {
-            // Разделение по переносу строки, фильтрация пустых строк
-            const lines = csvText.trim().split('\n').filter(line => line.trim() !== ''); 
-            if (lines.length < 2) return [];
+            try {
+                // 1. Нормализация переносов строк: заменяем \r\n и \r на \n
+                let normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                
+                // 2. Разделение по \n, фильтрация пустых строк
+                const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
+                
+                if (lines.length < 2) {
+                     // Если есть только одна строка (заголовок), возвращаем пустой массив
+                     if (lines.length === 1 && lines[0].split(delimiter).length >= 2) {
+                        return []; 
+                     }
+                     throw new Error("Недостаточно строк для парсинга (нужен заголовок и данные).");
+                }
 
-            // Заголовки - первая строка
-            const headers = lines[0].split(delimiter).map(h => h.trim());
-            
-            // Карта для внутренних ключей
-            const keyMap = {
-                'ID номер': 'id',
-                'ФИО': 'name',
-                'Количество пропусков': 'absences'
-            };
+                // Заголовки - первая строка
+                const headers = lines[0].split(delimiter).map(h => h.trim());
+                
+                // Карта для внутренних ключей
+                const keyMap = {
+                    'ID номер': 'id',
+                    'ФИО': 'name',
+                    'Количество пропусков': 'absences'
+                };
 
-            return lines.slice(1).map(line => {
-                const values = line.split(delimiter).map(v => v.trim());
-                const student = {};
+                const parsedData = lines.slice(1).map(line => {
+                    const values = line.split(delimiter).map(v => v.trim());
+                    const student = {};
 
-                headers.forEach((header, index) => {
-                    const key = keyMap[header] || header;
-                    let value = values[index];
+                    headers.forEach((header, index) => {
+                        const key = keyMap[header] || header;
+                        let value = values[index];
 
-                    if (key === 'absences') {
-                        // Числовое преобразование, если возможно
-                        student[key] = parseInt(value, 10) || 0;
-                    } else {
-                        student[key] = value;
-                    }
+                        if (key === 'absences') {
+                            student[key] = parseInt(value, 10) || 0;
+                        } else {
+                            student[key] = value;
+                        }
+                    });
+                    return student;
                 });
-                return student;
-            });
+                
+                console.log(`Успешно обработано ${parsedData.length} строк данных.`);
+                return parsedData;
+
+            } catch (error) {
+                console.error("Ошибка парсинга CSV:", error.message);
+                displayMessage(`Ошибка парсинга CSV: ${error.message}. Проверьте разделитель (используется "${delimiter}") и кодировку.`, 'error');
+                return [];
+            }
         }
 
         /**
@@ -201,8 +219,6 @@
          */
         function handleCellEdit(event) {
             const cell = event.target;
-            // Используем data-index для поиска студента в массиве studentData,
-            // что надежнее, чем data-id, так как данные могут быть отсортированы.
             const studentIndex = parseInt(cell.dataset.index, 10); 
             const key = cell.dataset.key;
             let newValue = cell.textContent.trim();
@@ -222,16 +238,15 @@
             }
 
             calculateAndRenderStats();
-            // Вызываем sortData с текущим ключом, чтобы убедиться, что измененная
-            // строка осталась в нужном месте, если ключ сортировки - 'absences'.
+            
+            // Сохраняем и перерисовываем с учетом текущей сортировки, чтобы обновленная строка встала на правильное место
             if (currentSort.key) {
-                // Временно меняем direction на противоположный, чтобы force sortData 
-                // применил текущий direction (hack)
+                // Временно меняем direction на противоположный, чтобы sortData применил текущий direction
                 const tempDirection = currentSort.direction;
                 currentSort.direction = tempDirection === 'asc' ? 'desc' : 'asc'; 
                 sortData(currentSort.key);
             } else {
-                renderTable(); // Если сортировки нет, просто рендерим
+                renderTable(); 
             }
             displayMessage('Данные успешно обновлены в приложении.', 'info');
         }
@@ -264,7 +279,6 @@
                 const row = document.createElement('tr');
                 
                 let rowClass = isOdd ? 'bg-gray-50' : 'bg-white';
-                // Условия для выделения: > 30 - критично, > 15 - повышенное внимание
                 if (student.absences > 30) {
                     rowClass = 'bg-red-50 hover:bg-red-100 transition duration-150';
                 } else if (student.absences > 15) {
@@ -337,33 +351,29 @@
             try {
                 let csvText;
                 
-                // ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЙ МЕТОД fetchFile ДЛЯ НАДЕЖНОЙ ЗАГРУЗКИ ФАЙЛА
-                if (typeof fetchFile === 'function') {
-                    csvText = await fetchFile(FILE_NAME);
-                } else {
-                    // Fallback для сред, где fetchFile недоступен (старый синтаксис, который давал 404)
-                    const response = await fetch(`uploaded:${FILE_NAME}`);
-                    if (!response.ok) {
-                        throw new Error(`Ошибка загрузки файла: статус ${response.status}. Проверьте имя файла.`);
-                    }
-                    csvText = await response.text();
+                // Используем глобальную функцию fetchFile для надежной загрузки, 
+                // удаляя ненадежный fallback с 'uploaded:'.
+                if (typeof fetchFile !== 'function') {
+                    throw new Error("Внутренняя ошибка: функция fetchFile недоступна.");
                 }
+                csvText = await fetchFile(FILE_NAME);
 
                 // 1. Парсинг данных
                 studentData = parseCSV(csvText, CSV_DELIMITER);
 
                 if (studentData.length === 0) {
-                    displayMessage(`Ошибка: Файл "${FILE_NAME}" пуст или содержит неверный формат данных.`, 'error');
+                    loadingIndicator.textContent = `Данные не найдены. Проверьте содержимое "${FILE_NAME}".`;
+                    loadingIndicator.classList.add('text-red-600', 'font-bold');
                     return;
                 }
 
                 // 2. Вычисление статистики
                 calculateAndRenderStats();
 
-                // 3. Сортировка и рендеринг (применяем сортировку по умолчанию)
+                // 3. Сортировка и рендеринг 
                 sortData(currentSort.key);
 
-                // 4. Добавление обработчиков событий для заголовков таблицы
+                // 4. Обработчики для сортировки
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
@@ -377,10 +387,10 @@
                 studentTable.classList.remove('hidden');
 
             } catch (e) {
-                console.error("Ошибка инициализации приложения:", e);
-                loadingIndicator.textContent = `Ошибка загрузки данных: ${e.message}.`;
+                console.error("Критическая ошибка инициализации:", e);
+                loadingIndicator.textContent = `Критическая ошибка загрузки: ${e.message}`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
-                displayMessage(`Критическая ошибка при загрузке данных: ${e.message}`, 'error');
+                displayMessage(`Критическая ошибка при загрузке данных: ${e.message}.`, 'error');
             }
         }
 
