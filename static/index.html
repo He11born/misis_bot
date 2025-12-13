@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анализ Данных о Пропусках Студентов</title>
+    <title>Анализ Пропусков Студентов (СХРАНЕНИЕ)</title>
     <!-- Подключение Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -51,8 +51,11 @@
 
     <div class="container-fluid mx-auto">
         <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
-            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
-            <p class="text-gray-600">Данные **встроены** в код для обеспечения стабильности. **Кликните на ФИО или количество пропусков для редактирования.**</p>
+            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов (Сохранение)</h1>
+            <p class="text-gray-600">
+                Данные сохраняются в **Firebase Firestore**. Редактируйте ячейки, и изменения будут постоянными при перезагрузке.
+                <span class="text-xs text-gray-400 block mt-1">App ID: <span id="app-id">...</span> | User ID: <span id="user-id">...</span></span>
+            </p>
         </header>
 
         <!-- Блок статистики -->
@@ -74,9 +77,9 @@
         <!-- Контейнер таблицы -->
         <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">Список Студентов</h2>
-            <!-- Индикатор загрузки (теперь будет быстро скрыт) -->
+            <!-- Индикатор загрузки -->
             <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-blue-600">
-                Инициализация данных...
+                Подключение к базе данных и загрузка данных...
             </div>
             
             <table id="student-table" class="min-w-full divide-y divide-gray-200 hidden">
@@ -100,12 +103,13 @@
 
     </div>
 
-    <script>
-        let studentData = [];
-        let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию
-        const CSV_DELIMITER = ';';
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Встроенные данные из разраб.csv для обхода ошибки Failed to fetch
+        // Встроенные данные для инициализации Firestore (если база данных пуста)
         const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
 2502954;Аржанова Софья Максимовна;18
 2505473;Бодрова Ирина Александровна;72
@@ -131,9 +135,20 @@
 2501852;Хомина Лилия Тарасовна;28
 2513503;Яковлева Софья Владимировна;4
 2507065;Ярмошик Лилия Максимовна;6`;
+        
+        const CSV_DELIMITER = ';';
+        let studentData = [];
+        let currentSort = { key: 'absences', direction: 'desc' };
+        
+        let db, auth;
+        let userId = 'unknown';
+        let appId;
+        const COLLECTION_NAME = 'students';
+
+        setLogLevel('debug'); // Включаем логирование Firebase
 
         /**
-         * Displays a message to the user.
+         * Отображает сообщение пользователю.
          */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
@@ -157,32 +172,23 @@
         }
 
         /**
-         * Parses the CSV string into an array of objects.
+         * Парсит CSV-строку во временный массив объектов для инициализации.
          */
         function parseCSV(csvText, delimiter) {
             try {
-                // Normalize line breaks and filter empty lines
                 let normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
                 const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
                 
-                if (lines.length < 2) {
-                     if (lines.length === 1 && lines[0].split(delimiter).length >= 2) {
-                        return []; 
-                     }
-                     throw new Error("Not enough rows for parsing (requires header and data).");
-                }
+                if (lines.length < 2) return [];
 
-                // Headers from the first line
                 const headers = lines[0].split(delimiter).map(h => h.trim());
-                
-                // Map from Russian headers to internal keys
                 const keyMap = {
                     'ID номер': 'id',
                     'ФИО': 'name',
                     'Количество пропусков': 'absences'
                 };
 
-                const parsedData = lines.slice(1).map(line => {
+                return lines.slice(1).map(line => {
                     const values = line.split(delimiter).map(v => v.trim());
                     const student = {};
 
@@ -196,25 +202,101 @@
                             student[key] = value;
                         }
                     });
+                    // Firestore requires a document ID, we use the student ID for that.
+                    student.docId = student.id.toString(); 
                     return student;
                 });
-                
-                console.log(`Successfully processed ${parsedData.length} data rows.`);
-                return parsedData;
-
             } catch (error) {
-                console.error("CSV Parsing Error:", error.message);
-                displayMessage(`Ошибка парсинга встроенных данных: ${error.message}. Проверьте формат CSV.`, 'error');
+                console.error("Ошибка парсинга CSV:", error.message);
+                displayMessage(`Ошибка парсинга встроенного CSV: ${error.message}.`, 'error');
                 return [];
+            }
+        }
+        
+        /**
+         * Получает путь к публичной коллекции Firestore.
+         */
+        function getCollectionPath() {
+            return `artifacts/${appId}/public/data/${COLLECTION_NAME}`;
+        }
+        
+        /**
+         * Записывает данные из CSV в Firestore, если коллекция пуста.
+         */
+        async function initializeFirestoreIfEmpty(data) {
+            const studentsCollectionRef = collection(db, getCollectionPath());
+            
+            // Проверяем, есть ли уже документы
+            const snapshot = await getDocs(studentsCollectionRef);
+            if (snapshot.size > 0) {
+                console.log("Firestore уже содержит данные. Инициализация из CSV не требуется.");
+                return;
+            }
+
+            console.log(`Инициализация Firestore ${snapshot.size} документами из CSV...`);
+            displayMessage("База данных пуста. Инициализация данными из встроенного CSV...", 'info');
+
+            for (const student of data) {
+                const { docId, ...studentData } = student;
+                const docRef = doc(db, getCollectionPath(), docId);
+                await setDoc(docRef, studentData).catch(e => {
+                    console.error("Ошибка при сохранении документа:", e);
+                    displayMessage(`Ошибка сохранения ID ${docId}: ${e.message}`, 'error');
+                });
+            }
+            console.log("Инициализация завершена.");
+        }
+
+        /**
+         * Обновляет данные в Firestore при редактировании ячейки.
+         */
+        async function updateStudentInFirestore(studentId, key, value) {
+            try {
+                const docRef = doc(db, getCollectionPath(), studentId.toString());
+                const updatePayload = { [key]: value };
+                await setDoc(docRef, updatePayload, { merge: true });
+            } catch (error) {
+                console.error("Ошибка обновления Firestore:", error);
+                displayMessage(`Ошибка сохранения данных в Firestore: ${error.message}`, 'error');
             }
         }
 
         /**
-         * Sorts student data.
+         * Запускает слушатель Firestore для реального времени.
          */
+        function startFirestoreListener() {
+            const studentsCollectionRef = collection(db, getCollectionPath());
+            
+            onSnapshot(studentsCollectionRef, (snapshot) => {
+                studentData = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        docId: doc.id,
+                        name: data.name,
+                        absences: data.absences 
+                    };
+                });
+                
+                console.log(`Данные обновлены из Firestore. Получено ${studentData.length} документов.`);
+                
+                // Пересчитываем статистику и рендерим таблицу
+                calculateAndRenderStats();
+                sortData(currentSort.key);
+                
+                document.getElementById('loading-indicator').classList.add('hidden');
+                document.getElementById('student-table').classList.remove('hidden');
+
+            }, (error) => {
+                console.error("Ошибка слушателя Firestore:", error);
+                displayMessage(`Ошибка при получении данных в реальном времени: ${error.message}`, 'error');
+            });
+        }
+        
+        // --- UI and Local Logic Functions (Unchanged, but now calls Firestore update) ---
+
         function sortData(key) {
             let direction = 'asc';
-
             if (currentSort.key === key) {
                 direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
             }
@@ -222,14 +304,7 @@
             studentData.sort((a, b) => {
                 const aVal = a[key];
                 const bVal = b[key];
-
-                let comparison = 0;
-                if (typeof aVal === 'number' && typeof bVal === 'number') {
-                    comparison = aVal - bVal;
-                } else {
-                    comparison = aVal.localeCompare(bVal, 'ru', { sensitivity: 'base' });
-                }
-
+                let comparison = (typeof aVal === 'number' && typeof bVal === 'number') ? aVal - bVal : aVal.localeCompare(bVal, 'ru', { sensitivity: 'base' });
                 return direction === 'asc' ? comparison : comparison * -1;
             });
 
@@ -237,52 +312,41 @@
             renderTable();
         }
 
-        /**
-         * Handles data change in an editable cell.
-         */
         function handleCellEdit(event) {
             const cell = event.target;
-            // Get index from the cell's data attribute
-            const studentIndex = parseInt(cell.dataset.index, 10); 
+            const docId = cell.dataset.docid; // Используем docId
             const key = cell.dataset.key;
             let newValue = cell.textContent.trim();
+            const student = studentData.find(s => s.docId === docId);
 
-            if (isNaN(studentIndex) || studentIndex < 0 || studentIndex >= studentData.length) return;
+            if (!student) return;
+
+            let valueToSave = newValue;
 
             if (key === 'absences') {
                 const parsedValue = parseInt(newValue, 10);
                 if (isNaN(parsedValue) || parsedValue < 0) {
                     displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом. Изменение отменено.', 'warning');
-                    cell.textContent = studentData[studentIndex][key];
+                    cell.textContent = student[key]; // Возвращаем старое значение в UI
                     return;
                 }
-                studentData[studentIndex][key] = parsedValue;
-            } else {
-                studentData[studentIndex][key] = newValue;
+                valueToSave = parsedValue;
             }
-
-            calculateAndRenderStats();
             
-            // Re-sort to reflect changes, maintaining current direction
-            if (currentSort.key) {
-                const tempDirection = currentSort.direction;
-                // Temporarily reverse direction to force resort in the same direction
-                currentSort.direction = tempDirection === 'asc' ? 'desc' : 'asc'; 
-                sortData(currentSort.key);
-            } else {
-                renderTable(); 
-            }
-            displayMessage('Данные успешно обновлены в приложении.', 'info');
-        }
+            // 1. Обновляем локальные данные (чтобы UI сразу не моргнул)
+            student[key] = valueToSave;
 
-        /**
-         * Renders the table and updates sorting indicators.
-         */
+            // 2. Отправляем изменение в Firestore
+            updateStudentInFirestore(docId, key, valueToSave);
+
+            // Firestore Listener позаботится об обновлении UI (renderTable)
+            displayMessage('Данные отправлены на сохранение...', 'info');
+        }
+        
         function renderTable() {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
-
-            // Update sorting headers
+            
             document.querySelectorAll('#student-table th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
                 th.classList.add('sort-none');
@@ -315,20 +379,19 @@
                     <td 
                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"
                         contenteditable="true"
-                        data-index="${index}"
+                        data-docid="${student.docId}"
                         data-key="name"
                     >${student.name}</td>
                     <td 
                         class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600' : 'text-gray-900'}"
                         contenteditable="true"
-                        data-index="${index}"
+                        data-docid="${student.docId}"
                         data-key="absences"
                     >${student.absences}</td>
                 `;
                 tbody.appendChild(row);
             });
             
-            // Attach event handlers for editable cells
             document.querySelectorAll('[contenteditable="true"]').forEach(cell => {
                 cell.removeEventListener('blur', handleCellEdit);
                 cell.addEventListener('blur', handleCellEdit);
@@ -338,9 +401,6 @@
             });
         }
         
-        /**
-         * Keydown handler to prevent line breaks in editable cells.
-         */
         function handleCellKeyDown(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -348,9 +408,6 @@
             }
         }
 
-        /**
-         * Calculates and displays statistics.
-         */
         function calculateAndRenderStats() {
             const totalStudents = studentData.length;
             const totalAbsences = studentData.reduce((sum, student) => sum + (student.absences || 0), 0);
@@ -361,33 +418,50 @@
             document.getElementById('avg-absences').textContent = avgAbsences;
         }
 
-        /**
-         * Synchronous application initialization using embedded data.
-         */
-        function initApp() {
+
+        // --- FIREBASE INITIALIZATION ---
+
+        async function initApp() {
             const loadingIndicator = document.getElementById('loading-indicator');
-            const studentTable = document.getElementById('student-table');
+            loadingIndicator.textContent = "Подключение к Firebase...";
 
             try {
-                // Use embedded data
-                const csvText = EMBEDDED_CSV_DATA;
+                // 1. Инициализация переменных окружения
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                
+                document.getElementById('app-id').textContent = appId;
 
-                // 1. Parse data
-                studentData = parseCSV(csvText, CSV_DELIMITER);
+                // 2. Инициализация Firebase
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
 
-                if (studentData.length === 0) {
-                    loadingIndicator.textContent = `Данные не найдены. Встроенный CSV пуст или некорректен.`;
-                    loadingIndicator.classList.add('text-red-600', 'font-bold');
-                    return;
+                // 3. Аутентификация
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
                 }
 
-                // 2. Calculate statistics
-                calculateAndRenderStats();
+                userId = auth.currentUser?.uid || 'N/A';
+                document.getElementById('user-id').textContent = userId;
+                console.log(`Аутентификация успешна. User ID: ${userId}`);
 
-                // 3. Sort and render
-                sortData(currentSort.key);
+                loadingIndicator.textContent = "Проверка наличия данных...";
 
-                // 4. Sort handlers
+                // 4. Инициализация данных, если Firestore пуст
+                const initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                if (initialData.length > 0) {
+                    await initializeFirestoreIfEmpty(initialData);
+                }
+
+                // 5. Запуск слушателя в реальном времени
+                loadingIndicator.textContent = "Загрузка данных в реальном времени...";
+                startFirestoreListener();
+
+                // 6. Обработчики для сортировки (один раз)
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
@@ -396,19 +470,15 @@
                         }
                     });
                 });
-                
-                loadingIndicator.classList.add('hidden');
-                studentTable.classList.remove('hidden');
 
             } catch (e) {
-                console.error("Critical Initialization Error:", e);
-                loadingIndicator.textContent = `Критическая ошибка обработки встроенных данных: ${e.message}`;
+                console.error("Критическая ошибка инициализации приложения:", e);
+                loadingIndicator.textContent = `Критическая ошибка: ${e.message}. Проверьте конфигурацию Firebase.`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
-                displayMessage(`Критическая ошибка при обработке данных: ${e.message}.`, 'error');
+                displayMessage(`Критическая ошибка при запуске: ${e.message}`, 'error');
             }
         }
 
-        // Run application on page load
         window.onload = initApp;
     </script>
 </body>
