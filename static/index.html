@@ -105,6 +105,13 @@
         let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию
         const FILE_NAME = 'разраб.csv';
         const CSV_DELIMITER = ';';
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = 1000;
+
+        /**
+         * Утилита для задержки
+         */
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
         /**
          * Отображает сообщение пользователю
@@ -336,32 +343,48 @@
         }
 
         /**
-         * Асинхронная инициализация приложения с загрузкой данных.
+         * Асинхронная инициализация приложения с загрузкой данных, включая механизм повторных попыток.
          */
         async function initApp() {
             const loadingIndicator = document.getElementById('loading-indicator');
             const studentTable = document.getElementById('student-table');
+            const fetchUrl = `uploaded:${FILE_NAME}`; // Возвращаемся к прямому пути
 
             loadingIndicator.classList.remove('hidden');
             studentTable.classList.add('hidden');
 
             try {
-                let csvText;
-                
-                // ИСПОЛЬЗУЕМ СТАНДАРТНЫЙ FETCH с URL-кодированием
-                // Это должно решить проблему с 'Failed to fetch' из-за кириллицы в пути.
-                const fetchUrl = `uploaded:${encodeURIComponent(FILE_NAME)}`;
+                let csvText = null;
+                let lastError = null;
 
-                console.log(`Попытка загрузить файл по URL: ${fetchUrl}`);
-                const response = await fetch(fetchUrl);
-                
-                if (!response.ok) {
-                    throw new Error(`Ошибка загрузки: статус ${response.status}. Проверьте, что файл "${FILE_NAME}" загружен.`);
+                for (let i = 0; i < MAX_RETRIES; i++) {
+                    loadingIndicator.textContent = `Загрузка данных из ${FILE_NAME}... (Попытка ${i + 1}/${MAX_RETRIES})`;
+                    try {
+                        // 1. Попытка загрузки
+                        const response = await fetch(fetchUrl);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Статус ${response.status} (${response.statusText}).`);
+                        }
+                        
+                        csvText = await response.text();
+                        break; // Успешно загружено, выходим из цикла
+                        
+                    } catch (e) {
+                        lastError = e;
+                        console.warn(`Ошибка при попытке загрузки №${i + 1}: ${e.message}`);
+                        if (i < MAX_RETRIES - 1) {
+                            await delay(RETRY_DELAY_MS);
+                        }
+                    }
                 }
                 
-                csvText = await response.text();
-
-                // 1. Парсинг данных
+                if (csvText === null) {
+                    // Если после всех попыток не удалось загрузить
+                    throw new Error(`Failed to fetch: Не удалось загрузить файл после ${MAX_RETRIES} попыток. Последняя ошибка: ${lastError ? lastError.message : 'Неизвестно'}`);
+                }
+                
+                // 2. Парсинг данных
                 studentData = parseCSV(csvText, CSV_DELIMITER);
 
                 if (studentData.length === 0) {
@@ -370,13 +393,13 @@
                     return;
                 }
 
-                // 2. Вычисление статистики
+                // 3. Вычисление статистики
                 calculateAndRenderStats();
 
-                // 3. Сортировка и рендеринг 
+                // 4. Сортировка и рендеринг 
                 sortData(currentSort.key);
 
-                // 4. Обработчики для сортировки
+                // 5. Обработчики для сортировки
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
