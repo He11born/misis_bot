@@ -142,7 +142,6 @@
                 const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
                 
                 if (lines.length < 2) {
-                     // Если есть только одна строка (заголовок), возвращаем пустой массив
                      if (lines.length === 1 && lines[0].split(delimiter).length >= 2) {
                         return []; 
                      }
@@ -239,9 +238,7 @@
 
             calculateAndRenderStats();
             
-            // Сохраняем и перерисовываем с учетом текущей сортировки, чтобы обновленная строка встала на правильное место
             if (currentSort.key) {
-                // Временно меняем direction на противоположный, чтобы sortData применил текущий direction
                 const tempDirection = currentSort.direction;
                 currentSort.direction = tempDirection === 'asc' ? 'desc' : 'asc'; 
                 sortData(currentSort.key);
@@ -351,12 +348,18 @@
             try {
                 let csvText;
                 
-                // Используем глобальную функцию fetchFile для надежной загрузки, 
-                // удаляя ненадежный fallback с 'uploaded:'.
-                if (typeof fetchFile !== 'function') {
-                    throw new Error("Внутренняя ошибка: функция fetchFile недоступна.");
+                // ИСПОЛЬЗУЕМ СТАНДАРТНЫЙ FETCH с URL-кодированием
+                // Это должно решить проблему с 'Failed to fetch' из-за кириллицы в пути.
+                const fetchUrl = `uploaded:${encodeURIComponent(FILE_NAME)}`;
+
+                console.log(`Попытка загрузить файл по URL: ${fetchUrl}`);
+                const response = await fetch(fetchUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки: статус ${response.status}. Проверьте, что файл "${FILE_NAME}" загружен.`);
                 }
-                csvText = await fetchFile(FILE_NAME);
+                
+                csvText = await response.text();
 
                 // 1. Парсинг данных
                 studentData = parseCSV(csvText, CSV_DELIMITER);
