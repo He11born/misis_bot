@@ -19,7 +19,6 @@
             position: relative;
             padding-right: 2rem !important; /* Добавляем место для иконки */
         }
-        /* Иконки сортировки */
         th::after {
             content: ' ';
             position: absolute;
@@ -28,20 +27,20 @@
             transform: translateY(-50%);
             opacity: 0.3;
         }
-        /* Иконки по умолчанию (сортировка не применена) */
-        th.sort-none::after {
-            content: "↕";
+        th.sort-none::after { content: "↕"; }
+        th.sort-asc::after { content: "▲"; opacity: 1; }
+        th.sort-desc::after { content: "▼"; opacity: 1; }
+        
+        /* Стиль для редактируемых ячеек */
+        [contenteditable="true"]:focus {
+            outline: 2px solid #3b82f6; /* Blue-500 ring */
+            border-radius: 0.25rem;
+            padding: 3px;
         }
-        /* Иконка для сортировки по возрастанию */
-        th.sort-asc::after {
-            content: "▲";
-            opacity: 1;
+        [contenteditable="true"] {
+            transition: all 0.1s;
         }
-        /* Иконка для сортировки по убыванию */
-        th.sort-desc::after {
-            content: "▼";
-            opacity: 1;
-        }
+
         .container-fluid {
             width: 95%;
             max-width: 1200px;
@@ -53,22 +52,19 @@
     <div class="container-fluid mx-auto">
         <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
             <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
-            <p class="text-gray-600">Данные, загруженные из файла <code class="bg-gray-100 p-1 rounded">разраб.csv</code>.</p>
+            <p class="text-gray-600">Данные, загруженные из файла <code class="bg-gray-100 p-1 rounded">разраб.csv</code>. **Кликните на ФИО или количество пропусков для редактирования.**</p>
         </header>
 
         <!-- Блок статистики -->
         <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Карточка 1: Общее количество студентов -->
             <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-500">
                 <p class="text-sm font-medium text-gray-500">Всего студентов</p>
                 <p id="total-students" class="text-3xl font-bold text-gray-900 mt-1">0</p>
             </div>
-            <!-- Карточка 2: Общее количество пропусков -->
             <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-red-500">
                 <p class="text-sm font-medium text-gray-500">Суммарное количество пропусков</p>
                 <p id="total-absences" class="text-3xl font-bold text-gray-900 mt-1">0</p>
             </div>
-            <!-- Карточка 3: Среднее количество пропусков -->
             <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-green-500">
                 <p class="text-sm font-medium text-gray-500">Среднее количество пропусков</p>
                 <p id="avg-absences" class="text-3xl font-bold text-gray-900 mt-1">0.00</p>
@@ -82,8 +78,8 @@
                 <thead class="bg-gray-50">
                     <tr>
                         <th data-key="id" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tl-xl">ID номер</th>
-                        <th data-key="name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none">ФИО</th>
-                        <th data-key="absences" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tr-xl">Количество пропусков</th>
+                        <th data-key="name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none">ФИО (Редакт.)</th>
+                        <th data-key="absences" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tr-xl">Количество пропусков (Редакт.)</th>
                     </tr>
                 </thead>
                 <tbody id="table-body" class="bg-white divide-y divide-gray-200">
@@ -103,50 +99,48 @@
     </div>
 
     <script>
-        // Хардкодим данные из CSV, чтобы приложение было сразу работоспособно.
-        // В реальном приложении здесь был бы fetch для загрузки 'uploaded:разраб.csv'.
+        // Хардкодим данные из CSV
         const rawCsvData = "ID номер;ФИО;Количество пропусков\r\n2502954;Аржанова Софья Максимовна;8\r\n2505473;Бодрова Ирина Александровна;62\r\n2507138;Демидов Артемий Михайлович ;89\r\n2510235;Дибривный Павел Григорьевич ;28\r\n2513531;Климкина Александра Сергеевна;14\r\n2510678;Козлова Мария Александровна ;6\r\n2508482;Колесниченко Савва Евгеньевич ;16\r\n2505666;Комендантова Арианна Ивановна ;2\r\n2507479;Крылов Максим Вадимович ;18\r\n2509330;Кумаритова София Маратовна;6\r\n2502486;Кухарева Таисия Сергеевна ;4\r\n2514041;Ладыгин Александр Артёмович ;50\r\n2509812;Мельникова Елена Алексеевна ;12\r\n2506434;Пинигина Юлия Вадимовна;8\r\n2516586;Подвойский Виктор Владимирович;12\r\n2507566;Покладова Елизавета Алексеевна ;14\r\n2513544;Семендяева Наталья Сергеевна;45\r\n2506290;Сергачёв Егор Дмитриевич;34";
 
         let studentData = [];
-        let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию: по пропускам, по убыванию
+        let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию
 
         /**
          * Отображает сообщение пользователю (вместо alert)
-         * @param {string} message - Текст сообщения
-         * @param {string} type - Тип: 'error', 'warning', 'info'
          */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
             box.textContent = message;
             box.className = 'mt-4 p-4 rounded-lg';
-
-            switch (type) {
-                case 'error':
-                    box.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
-                    break;
-                case 'warning':
-                    box.classList.add('bg-yellow-100', 'border-yellow-400', 'text-yellow-700');
-                    break;
-                default:
-                    box.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
-            }
             box.classList.remove('hidden');
+            
+            // Настройка стилей в зависимости от типа сообщения
+            const styles = {
+                'error': ['bg-red-100', 'border-red-400', 'text-red-700'],
+                'warning': ['bg-yellow-100', 'border-yellow-400', 'text-yellow-700'],
+                'info': ['bg-blue-100', 'border-blue-400', 'text-blue-700']
+            };
+            
+            // Сброс всех классов и применение нужных
+            ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700'].forEach(c => box.classList.remove(c));
+            box.classList.add(...(styles[type] || styles['info']));
+
+            // Скрытие сообщения через 5 секунд
+            clearTimeout(box.timer);
+            box.timer = setTimeout(() => {
+                box.classList.add('hidden');
+            }, 5000);
         }
 
         /**
          * Парсит CSV-строку в массив объектов.
-         * @param {string} csvText - Вся строка CSV.
-         * @param {string} delimiter - Разделитель столбцов.
-         * @returns {Array<Object>} Массив данных студентов.
          */
         function parseCSV(csvText, delimiter) {
             const lines = csvText.trim().split('\r\n');
             if (lines.length < 2) return [];
 
-            // Заголовки - первая строка
             const headers = lines[0].split(delimiter).map(h => h.trim());
             
-            // Определяем ключи для удобства
             const keyMap = {
                 'ID номер': 'id',
                 'ФИО': 'name',
@@ -161,11 +155,8 @@
                     const key = keyMap[header] || header;
                     let value = values[index];
 
-                    // Преобразование "Количество пропусков" и "ID номер" в числа
                     if (key === 'absences') {
                         student[key] = parseInt(value, 10) || 0;
-                    } else if (key === 'id') {
-                        student[key] = value; // ID лучше оставить строкой, чтобы сохранить нули
                     } else {
                         student[key] = value;
                     }
@@ -176,7 +167,6 @@
 
         /**
          * Сортирует данные студентов.
-         * @param {string} key - Ключ для сортировки ('id', 'name', 'absences').
          */
         function sortData(key) {
             let direction = 'asc';
@@ -185,7 +175,6 @@
                 direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
             }
 
-            // Логика сортировки
             studentData.sort((a, b) => {
                 const aVal = a[key];
                 const bVal = b[key];
@@ -205,15 +194,48 @@
         }
 
         /**
-         * Рендерит таблицу и обновляет индикаторы сортировки.
+         * Обрабатывает изменение данных в ячейке.
+         */
+        function handleCellEdit(event) {
+            const cell = event.target;
+            const studentId = cell.dataset.id;
+            const key = cell.dataset.key;
+            let newValue = cell.textContent.trim();
+
+            const studentIndex = studentData.findIndex(s => s.id === studentId);
+            if (studentIndex === -1) return;
+
+            if (key === 'absences') {
+                const parsedValue = parseInt(newValue, 10);
+                if (isNaN(parsedValue) || parsedValue < 0) {
+                    displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом.', 'warning');
+                    // Восстанавливаем старое значение
+                    cell.textContent = studentData[studentIndex][key];
+                    return;
+                }
+                studentData[studentIndex][key] = parsedValue;
+            } else {
+                // Для ФИО
+                studentData[studentIndex][key] = newValue;
+            }
+
+            // Пересчет статистики и обновление таблицы
+            calculateAndRenderStats();
+            // Вызываем рендеринг, чтобы обновить стили и возможную сортировку
+            renderTable();
+            displayMessage('Данные успешно обновлены.', 'info');
+        }
+
+        /**
+         * Рендерит таблицу и обновляет индикаторы сортировки, а также прикрепляет обработчики редактирования.
          */
         function renderTable() {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = ''; // Очистка
 
-            // Обновление заголовков
+            // Обновление заголовков сортировки
             document.querySelectorAll('#student-table th').forEach(th => {
-                th.classList.remove('sort-asc', 'sort-desc');
+                th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
                 th.classList.add('sort-none');
                 if (th.dataset.key === currentSort.key) {
                     th.classList.remove('sort-none');
@@ -231,7 +253,7 @@
             studentData.forEach((student, index) => {
                 const isOdd = index % 2 !== 0;
                 const row = document.createElement('tr');
-                // Визуальное выделение студентов с большим количеством пропусков (> 30)
+                
                 let rowClass = isOdd ? 'bg-gray-50' : 'bg-white';
                 if (student.absences > 30) {
                     rowClass = 'bg-red-50 hover:bg-red-100 transition duration-150';
@@ -240,13 +262,45 @@
                 }
                 row.className = rowClass;
 
+                // Добавление атрибута contenteditable="true" и data-атрибутов
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${student.name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600' : 'text-gray-900'}">${student.absences}</td>
+                    <td 
+                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"
+                        contenteditable="true"
+                        data-id="${student.id}"
+                        data-key="name"
+                    >${student.name}</td>
+                    <td 
+                        class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600' : 'text-gray-900'}"
+                        contenteditable="true"
+                        data-id="${student.id}"
+                        data-key="absences"
+                    >${student.absences}</td>
                 `;
                 tbody.appendChild(row);
             });
+            
+            // Прикрепление обработчиков событий для редактируемых ячеек
+            document.querySelectorAll('[contenteditable="true"]').forEach(cell => {
+                // Событие blur (потеря фокуса) для сохранения изменений
+                cell.removeEventListener('blur', handleCellEdit); // Удаляем, чтобы избежать дублирования
+                cell.addEventListener('blur', handleCellEdit);
+                
+                // Предотвращение переноса строки при нажатии Enter и вызов blur для сохранения
+                cell.removeEventListener('keydown', handleCellKeyDown);
+                cell.addEventListener('keydown', handleCellKeyDown);
+            });
+        }
+        
+        /**
+         * Обработчик нажатия клавиш для предотвращения переноса строки.
+         */
+        function handleCellKeyDown(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.target.blur(); // Вызываем blur, чтобы сохранить изменения
+            }
         }
 
         /**
@@ -254,7 +308,7 @@
          */
         function calculateAndRenderStats() {
             const totalStudents = studentData.length;
-            const totalAbsences = studentData.reduce((sum, student) => sum + student.absences, 0);
+            const totalAbsences = studentData.reduce((sum, student) => sum + (student.absences || 0), 0);
             const avgAbsences = totalStudents > 0 ? (totalAbsences / totalStudents).toFixed(2) : '0.00';
 
             document.getElementById('total-students').textContent = totalStudents;
@@ -285,7 +339,7 @@
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
-                        if (key) {
+                        if (key && key !== 'id') { // ID не сортируем по умолчанию
                             sortData(key);
                         }
                     });
