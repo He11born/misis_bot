@@ -148,6 +148,13 @@
         setLogLevel('debug'); // Включаем логирование Firebase
 
         /**
+         * Утилита для ожидания (для повторных попыток).
+         */
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        /**
          * Отображает сообщение пользователю.
          */
         function displayMessage(message, type = 'info') {
@@ -217,6 +224,10 @@
          * Получает путь к публичной коллекции Firestore.
          */
         function getCollectionPath() {
+            if (!appId) {
+                console.error("App ID не определен. Невозможно получить путь коллекции.");
+                return null;
+            }
             return `artifacts/${appId}/public/data/${COLLECTION_NAME}`;
         }
         
@@ -224,7 +235,10 @@
          * Записывает данные из CSV в Firestore, если коллекция пуста.
          */
         async function initializeFirestoreIfEmpty(data) {
-            const studentsCollectionRef = collection(db, getCollectionPath());
+            const path = getCollectionPath();
+            if (!path) return;
+            
+            const studentsCollectionRef = collection(db, path);
             
             // Проверяем, есть ли уже документы
             const snapshot = await getDocs(studentsCollectionRef);
@@ -238,7 +252,7 @@
 
             for (const student of data) {
                 const { docId, ...studentData } = student;
-                const docRef = doc(db, getCollectionPath(), docId);
+                const docRef = doc(db, path, docId);
                 await setDoc(docRef, studentData).catch(e => {
                     console.error("Ошибка при сохранении документа:", e);
                     displayMessage(`Ошибка сохранения ID ${docId}: ${e.message}`, 'error');
@@ -248,16 +262,31 @@
         }
 
         /**
-         * Обновляет данные в Firestore при редактировании ячейки.
+         * Обновляет данные в Firestore при редактировании ячейки с механизмом повторных попыток.
+         * @returns {boolean} True, если сохранение успешно, False в противном случае.
          */
         async function updateStudentInFirestore(studentId, key, value) {
-            try {
-                const docRef = doc(db, getCollectionPath(), studentId.toString());
-                const updatePayload = { [key]: value };
-                await setDoc(docRef, updatePayload, { merge: true });
-            } catch (error) {
-                console.error("Ошибка обновления Firestore:", error);
-                displayMessage(`Ошибка сохранения данных в Firestore: ${error.message}`, 'error');
+            const path = getCollectionPath();
+            if (!path) return false;
+
+            const MAX_RETRIES = 3;
+            for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                try {
+                    const docRef = doc(db, path, studentId.toString());
+                    const updatePayload = { [key]: value };
+                    await setDoc(docRef, updatePayload, { merge: true });
+                    console.log(`[Firestore] Успешно обновлено ID ${studentId} (Попытка ${attempt + 1})`);
+                    return true; // Успех
+                } catch (error) {
+                    console.error(`[Firestore] Ошибка обновления ID ${studentId} (Попытка ${attempt + 1}):`, error);
+                    if (attempt === MAX_RETRIES - 1) {
+                        // Последняя попытка не удалась
+                        displayMessage(`КРИТИЧЕСКАЯ ОШИБКА СОХРАНЕНИЯ в Firestore: ${error.message}. Проверьте консоль для деталей!`, 'error');
+                        return false;
+                    }
+                    // Ждем перед следующей попыткой: 1s, 2s, 4s
+                    await sleep(1000 * Math.pow(2, attempt)); 
+                }
             }
         }
 
@@ -265,7 +294,10 @@
          * Запускает слушатель Firestore для реального времени.
          */
         function startFirestoreListener() {
-            const studentsCollectionRef = collection(db, getCollectionPath());
+            const path = getCollectionPath();
+            if (!path) return;
+            
+            const studentsCollectionRef = collection(db, path);
             
             onSnapshot(studentsCollectionRef, (snapshot) => {
                 studentData = snapshot.docs.map(doc => {
@@ -289,11 +321,11 @@
 
             }, (error) => {
                 console.error("Ошибка слушателя Firestore:", error);
-                displayMessage(`Ошибка при получении данных в реальном времени: ${error.message}`, 'error');
+                displayMessage(`Ошибка при получении данных в реальном времени: ${error.message}. Проверьте правила безопасности Firestore.`, 'error');
             });
         }
         
-        // --- UI and Local Logic Functions (Unchanged, but now calls Firestore update) ---
+        // --- UI and Local Logic Functions ---
 
         function sortData(key) {
             let direction = 'asc';
@@ -312,22 +344,25 @@
             renderTable();
         }
 
-        function handleCellEdit(event) {
+        async function handleCellEdit(event) {
             const cell = event.target;
-            const docId = cell.dataset.docid; // Используем docId
+            const docId = cell.dataset.docid;
             const key = cell.dataset.key;
             let newValue = cell.textContent.trim();
+            
             const student = studentData.find(s => s.docId === docId);
 
             if (!student) return;
 
+            // Запоминаем старое значение на случай неудачи
+            const oldValue = student[key];
             let valueToSave = newValue;
 
             if (key === 'absences') {
                 const parsedValue = parseInt(newValue, 10);
                 if (isNaN(parsedValue) || parsedValue < 0) {
                     displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом. Изменение отменено.', 'warning');
-                    cell.textContent = student[key]; // Возвращаем старое значение в UI
+                    cell.textContent = oldValue; // Возвращаем старое значение в UI
                     return;
                 }
                 valueToSave = parsedValue;
@@ -335,12 +370,22 @@
             
             // 1. Обновляем локальные данные (чтобы UI сразу не моргнул)
             student[key] = valueToSave;
+            cell.textContent = valueToSave; // Обновляем ячейку
 
-            // 2. Отправляем изменение в Firestore
-            updateStudentInFirestore(docId, key, valueToSave);
+            displayMessage('Отправка данных на сервер...', 'info');
 
-            // Firestore Listener позаботится об обновлении UI (renderTable)
-            displayMessage('Данные отправлены на сохранение...', 'info');
+            // 2. Отправляем изменение в Firestore (ожидаем результат)
+            const success = await updateStudentInFirestore(docId, key, valueToSave);
+
+            if (success) {
+                // Firestore Listener должен подтвердить это изменение и обновить всю таблицу
+                displayMessage('Данные успешно сохранены.', 'info');
+            } else {
+                // Если сохранение не удалось, откатываем UI к старому значению, чтобы показать неудачу
+                student[key] = oldValue;
+                cell.textContent = oldValue; 
+                // Сообщение об ошибке уже выведено в updateStudentInFirestore
+            }
         }
         
         function renderTable() {
@@ -393,6 +438,7 @@
             });
             
             document.querySelectorAll('[contenteditable="true"]').forEach(cell => {
+                // Удаляем старые, добавляем новые обработчики
                 cell.removeEventListener('blur', handleCellEdit);
                 cell.addEventListener('blur', handleCellEdit);
                 
@@ -439,6 +485,9 @@
                 auth = getAuth(app);
 
                 // 3. Аутентификация
+                // Используем onAuthStateChanged для гарантии, что Firestore запустится только после аутентификации.
+                // В данном случае, поскольку мы await signInWithCustomToken, onAuthStateChanged будет почти мгновенным, 
+                // но лучше оставить await для надежности.
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
