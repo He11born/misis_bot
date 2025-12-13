@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анализ Пропусков Студентов (СХРАНЕНИЕ)</title>
+    <title>Анализ Пропусков Студентов (Локальный режим)</title>
     <!-- Подключение Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -51,12 +51,18 @@
 
     <div class="container-fluid mx-auto">
         <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
-            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов (Сохранение)</h1>
-            <p class="text-gray-600">
-                Данные сохраняются в **Firebase Firestore**. Редактируйте ячейки, и изменения будут постоянными при перезагрузке.
+            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
+            <p id="app-status" class="text-gray-600">
                 <span class="text-xs text-gray-400 block mt-1">App ID: <span id="app-id">...</span> | User ID: <span id="user-id">...</span></span>
             </p>
         </header>
+        
+        <!-- Контейнер для критических предупреждений -->
+        <div id="critical-warning" class="hidden mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg" role="alert">
+            <p class="font-bold">Критическое предупреждение!</p>
+            <p id="warning-message">Приложение работает в **ЛОКАЛЬНОМ РЕЖИМЕ**. Конфигурация Firebase недействительна. Данные **НЕ БУДУТ** сохраняться при перезагрузке.</p>
+        </div>
+
 
         <!-- Блок статистики -->
         <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -79,7 +85,7 @@
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">Список Студентов</h2>
             <!-- Индикатор загрузки -->
             <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-blue-600">
-                Подключение к базе данных и загрузка данных...
+                Инициализация данных...
             </div>
             
             <table id="student-table" class="min-w-full divide-y divide-gray-200 hidden">
@@ -104,12 +110,12 @@
     </div>
 
     <script type="module">
+        // Импорты Firebase остаются, но будут использоваться условно
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // Встроенные данные для инициализации Firestore (если база данных пуста)
+        // Встроенные данные для инициализации (используются как fallback)
         const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
 2502954;Аржанова Софья Максимовна;18
 2505473;Бодрова Ирина Александровна;72
@@ -140,12 +146,14 @@
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
         
-        let db, auth;
+        let db = null; // Будет null, если Firebase не инициализирован
+        let auth = null;
         let userId = 'unknown';
         let appId;
         const COLLECTION_NAME = 'students';
+        let isFirestoreReady = false; // Флаг для проверки доступности Firestore
 
-        setLogLevel('debug'); // Включаем логирование Firebase
+        // setLogLevel('debug'); // Оставляем закомментированным, чтобы не спамить консоль при ошибке
 
         /**
          * Утилита для ожидания (для повторных попыток).
@@ -159,7 +167,7 @@
          */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
-            box.textContent = message;
+            box.innerHTML = message; // Используем innerHTML для поддержки форматирования
             box.className = 'mt-4 p-4 rounded-lg';
             box.classList.remove('hidden');
             
@@ -235,6 +243,8 @@
          * Записывает данные из CSV в Firestore, если коллекция пуста.
          */
         async function initializeFirestoreIfEmpty(data) {
+            if (!isFirestoreReady) return;
+
             const path = getCollectionPath();
             if (!path) return;
             
@@ -266,6 +276,11 @@
          * @returns {boolean} True, если сохранение успешно, False в противном случае.
          */
         async function updateStudentInFirestore(studentId, key, value) {
+            if (!isFirestoreReady) {
+                console.warn("[Firestore] Пропущена попытка сохранения: Firestore не готов.");
+                return false;
+            }
+
             const path = getCollectionPath();
             if (!path) return false;
 
@@ -294,6 +309,8 @@
          * Запускает слушатель Firestore для реального времени.
          */
         function startFirestoreListener() {
+            if (!isFirestoreReady) return;
+
             const path = getCollectionPath();
             if (!path) return;
             
@@ -350,9 +367,11 @@
             const key = cell.dataset.key;
             let newValue = cell.textContent.trim();
             
-            const student = studentData.find(s => s.docId === docId);
+            const studentIndex = studentData.findIndex(s => s.docId === docId);
 
-            if (!student) return;
+            if (studentIndex === -1) return;
+
+            const student = studentData[studentIndex];
 
             // Запоминаем старое значение на случай неудачи
             const oldValue = student[key];
@@ -368,23 +387,30 @@
                 valueToSave = parsedValue;
             }
             
-            // 1. Обновляем локальные данные (чтобы UI сразу не моргнул)
-            student[key] = valueToSave;
+            // 1. Обновляем локальные данные
+            studentData[studentIndex][key] = valueToSave;
             cell.textContent = valueToSave; // Обновляем ячейку
 
-            displayMessage('Отправка данных на сервер...', 'info');
+            calculateAndRenderStats();
+            // renderTable(); // Перерисовка не требуется, если меняется только ячейка
 
-            // 2. Отправляем изменение в Firestore (ожидаем результат)
-            const success = await updateStudentInFirestore(docId, key, valueToSave);
+            if (isFirestoreReady) {
+                displayMessage('Отправка данных на сервер...', 'info');
+                // 2. Отправляем изменение в Firestore (ожидаем результат)
+                const success = await updateStudentInFirestore(docId, key, valueToSave);
 
-            if (success) {
-                // Firestore Listener должен подтвердить это изменение и обновить всю таблицу
-                displayMessage('Данные успешно сохранены.', 'info');
+                if (success) {
+                    // Firestore Listener должен подтвердить это изменение и обновить всю таблицу
+                    displayMessage('Данные успешно сохранены.', 'info');
+                } else {
+                    // Если сохранение не удалось, откатываем UI к старому значению, чтобы показать неудачу
+                    studentData[studentIndex][key] = oldValue;
+                    cell.textContent = oldValue; 
+                    calculateAndRenderStats(); // Обновить статистику после отката
+                    // Сообщение об ошибке уже выведено в updateStudentInFirestore
+                }
             } else {
-                // Если сохранение не удалось, откатываем UI к старому значению, чтобы показать неудачу
-                student[key] = oldValue;
-                cell.textContent = oldValue; 
-                // Сообщение об ошибке уже выведено в updateStudentInFirestore
+                displayMessage('Изменение сохранено локально. Сохранение в базу данных недоступно.', 'warning');
             }
         }
         
@@ -469,60 +495,80 @@
 
         async function initApp() {
             const loadingIndicator = document.getElementById('loading-indicator');
-            loadingIndicator.textContent = "Подключение к Firebase...";
+            loadingIndicator.textContent = "Инициализация данных...";
 
             try {
                 // 1. Инициализация переменных окружения
                 appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                document.getElementById('app-id').textContent = appId;
                 
                 let firebaseConfig = {};
+                let configProvided = false;
+
                 if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                     try {
                         firebaseConfig = JSON.parse(__firebase_config);
+                        if (firebaseConfig.projectId) {
+                            configProvided = true;
+                        }
                     } catch (e) {
-                        // Ошибка парсинга JSON
-                        throw new Error(`Не удалось разобрать JSON-конфигурацию Firebase: ${e.message}`);
+                        console.error("Ошибка парсинга JSON-конфигурации Firebase:", e);
+                        // configProvided остается false
                     }
                 }
 
-                // *** ПРОВЕРКА КОНФИГУРАЦИИ ***
-                if (!firebaseConfig || !firebaseConfig.projectId) {
-                    // Критическая ошибка: отсутствует необходимый projectId
-                    throw new Error("Конфигурация Firebase недействительна. Отсутствует 'projectId'. Проверьте, что переменная __firebase_config предоставлена.");
-                }
-                
-                document.getElementById('app-id').textContent = appId;
+                // 2. Условная инициализация Firebase
+                if (configProvided) {
+                    console.log("Конфигурация Firebase обнаружена. Попытка подключения...");
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
 
-                // 2. Инициализация Firebase
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
+                    // Аутентификация
+                    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
 
-                // 3. Аутентификация
-                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
+                    userId = auth.currentUser?.uid || 'N/A';
+                    document.getElementById('user-id').textContent = userId;
+                    console.log(`Аутентификация успешна. User ID: ${userId}`);
+                    isFirestoreReady = true;
+
+                    document.getElementById('app-status').innerHTML = 'Данные сохраняются в **Firebase Firestore**. Редактируйте ячейки, и изменения будут постоянными при перезагрузке.';
+
+                    // Инициализация и слушатель (через Firestore)
+                    const initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                    if (initialData.length > 0) {
+                        await initializeFirestoreIfEmpty(initialData);
+                    }
+                    loadingIndicator.textContent = "Загрузка данных в реальном времени...";
+                    startFirestoreListener();
+
                 } else {
-                    await signInAnonymously(auth);
+                    // *** КРИТИЧЕСКИЙ FALLBACK: ЛОКАЛЬНЫЙ РЕЖИМ ***
+                    console.warn("Конфигурация Firebase отсутствует. Запуск в ЛОКАЛЬНОМ РЕЖИМЕ.");
+                    isFirestoreReady = false;
+                    
+                    document.getElementById('critical-warning').classList.remove('hidden');
+                    document.getElementById('user-id').textContent = 'ЛОКАЛЬНО';
+                    document.getElementById('app-status').innerHTML = 'Внимание: **СОХРАНЕНИЕ В БАЗУ ДАННЫХ НЕДОСТУПНО**. Изменения будут потеряны при перезагрузке.';
+
+                    // Загрузка данных из CSV и локальный рендеринг
+                    const initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                    studentData = initialData;
+                    
+                    calculateAndRenderStats();
+                    sortData(currentSort.key);
+                    
+                    document.getElementById('loading-indicator').classList.add('hidden');
+                    document.getElementById('student-table').classList.remove('hidden');
+                    displayMessage('Приложение работает в локальном режиме. Сохранение отключено.', 'error');
                 }
 
-                userId = auth.currentUser?.uid || 'N/A';
-                document.getElementById('user-id').textContent = userId;
-                console.log(`Аутентификация успешна. User ID: ${userId}`);
-
-                loadingIndicator.textContent = "Проверка наличия данных...";
-
-                // 4. Инициализация данных, если Firestore пуст
-                const initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
-                if (initialData.length > 0) {
-                    await initializeFirestoreIfEmpty(initialData);
-                }
-
-                // 5. Запуск слушателя в реальном времени
-                loadingIndicator.textContent = "Загрузка данных в реальном времени...";
-                startFirestoreListener();
-
-                // 6. Обработчики для сортировки (один раз)
+                // Обработчики для сортировки (один раз)
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
@@ -533,16 +579,15 @@
                 });
 
             } catch (e) {
+                // Если произошла ошибка ПРИ ИНИЦИАЛИЗАЦИИ, даже если конфиг был
                 console.error("Критическая ошибка инициализации приложения:", e);
-                
-                // Более четкое сообщение для пользователя
-                const message = e.message.includes('projectId') || e.message.includes('Конфигурация Firebase') 
-                    ? "Не удалось инициализировать Firebase: Конфигурация не предоставлена или недействительна."
-                    : `Критическая ошибка: ${e.message}. Проверьте конфигурацию Firebase.`;
-                    
-                loadingIndicator.textContent = message;
+                loadingIndicator.textContent = `Критическая ошибка: ${e.message}. Не удалось запустить даже локальный режим.`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
-                displayMessage(message, 'error');
+                displayMessage(`Критическая ошибка при запуске: ${e.message}`, 'error');
+                
+                // В этом случае мы все равно показываем предупреждение, что Firebase не работает
+                document.getElementById('critical-warning').classList.remove('hidden');
+                document.getElementById('warning-message').textContent = `Сбой инициализации Firebase: ${e.message}. Приложение работает в **ЛОКАЛЬНОМ РЕЖИМЕ** (без сохранения).`;
             }
         }
 
