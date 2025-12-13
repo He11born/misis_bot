@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анализ Данных о Пропусках Студентов</title>
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        /* Стили для заголовков таблицы с возможностью сортировки */
+        th {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 2rem !important; /* Добавляем место для иконки */
+        }
+        /* Иконки сортировки */
+        th::after {
+            content: ' ';
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0.3;
+        }
+        /* Иконки по умолчанию (сортировка не применена) */
+        th.sort-none::after {
+            content: "↕";
+        }
+        /* Иконка для сортировки по возрастанию */
+        th.sort-asc::after {
+            content: "▲";
+            opacity: 1;
+        }
+        /* Иконка для сортировки по убыванию */
+        th.sort-desc::after {
+            content: "▼";
+            opacity: 1;
+        }
+        .container-fluid {
+            width: 95%;
+            max-width: 1200px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="container-fluid mx-auto">
+        <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
+            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
+            <p class="text-gray-600">Данные, загруженные из файла <code class="bg-gray-100 p-1 rounded">разраб.csv</code>.</p>
+        </header>
+
+        <!-- Блок статистики -->
+        <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Карточка 1: Общее количество студентов -->
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-500">
+                <p class="text-sm font-medium text-gray-500">Всего студентов</p>
+                <p id="total-students" class="text-3xl font-bold text-gray-900 mt-1">0</p>
+            </div>
+            <!-- Карточка 2: Общее количество пропусков -->
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-red-500">
+                <p class="text-sm font-medium text-gray-500">Суммарное количество пропусков</p>
+                <p id="total-absences" class="text-3xl font-bold text-gray-900 mt-1">0</p>
+            </div>
+            <!-- Карточка 3: Среднее количество пропусков -->
+            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-green-500">
+                <p class="text-sm font-medium text-gray-500">Среднее количество пропусков</p>
+                <p id="avg-absences" class="text-3xl font-bold text-gray-900 mt-1">0.00</p>
+            </div>
+        </div>
+
+        <!-- Контейнер таблицы -->
+        <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Список Студентов</h2>
+            <table id="student-table" class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th data-key="id" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tl-xl">ID номер</th>
+                        <th data-key="name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none">ФИО</th>
+                        <th data-key="absences" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tr-xl">Количество пропусков</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body" class="bg-white divide-y divide-gray-200">
+                    <!-- Строки будут добавлены JavaScript -->
+                    <tr class="h-16">
+                        <td colspan="3" class="text-center text-gray-500">Данные загружаются...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Контейнер для сообщений об ошибках -->
+        <div id="message-box" class="mt-4 p-4 hidden bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg" role="alert">
+            <!-- Сообщения будут добавлены JavaScript -->
+        </div>
+
+    </div>
+
+    <script>
+        // Хардкодим данные из CSV, чтобы приложение было сразу работоспособно.
+        // В реальном приложении здесь был бы fetch для загрузки 'uploaded:разраб.csv'.
+        const rawCsvData = "ID номер;ФИО;Количество пропусков\r\n2502954;Аржанова Софья Максимовна;8\r\n2505473;Бодрова Ирина Александровна;62\r\n2507138;Демидов Артемий Михайлович ;89\r\n2510235;Дибривный Павел Григорьевич ;28\r\n2513531;Климкина Александра Сергеевна;14\r\n2510678;Козлова Мария Александровна ;6\r\n2508482;Колесниченко Савва Евгеньевич ;16\r\n2505666;Комендантова Арианна Ивановна ;2\r\n2507479;Крылов Максим Вадимович ;18\r\n2509330;Кумаритова София Маратовна;6\r\n2502486;Кухарева Таисия Сергеевна ;4\r\n2514041;Ладыгин Александр Артёмович ;50\r\n2509812;Мельникова Елена Алексеевна ;12\r\n2506434;Пинигина Юлия Вадимовна;8\r\n2516586;Подвойский Виктор Владимирович;12\r\n2507566;Покладова Елизавета Алексеевна ;14\r\n2513544;Семендяева Наталья Сергеевна;45\r\n2506290;Сергачёв Егор Дмитриевич;34";
+
+        let studentData = [];
+        let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию: по пропускам, по убыванию
+
+        /**
+         * Отображает сообщение пользователю (вместо alert)
+         * @param {string} message - Текст сообщения
+         * @param {string} type - Тип: 'error', 'warning', 'info'
+         */
+        function displayMessage(message, type = 'info') {
+            const box = document.getElementById('message-box');
+            box.textContent = message;
+            box.className = 'mt-4 p-4 rounded-lg';
+
+            switch (type) {
+                case 'error':
+                    box.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+                    break;
+                case 'warning':
+                    box.classList.add('bg-yellow-100', 'border-yellow-400', 'text-yellow-700');
+                    break;
+                default:
+                    box.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
+            }
+            box.classList.remove('hidden');
+        }
+
+        /**
+         * Парсит CSV-строку в массив объектов.
+         * @param {string} csvText - Вся строка CSV.
+         * @param {string} delimiter - Разделитель столбцов.
+         * @returns {Array<Object>} Массив данных студентов.
+         */
+        function parseCSV(csvText, delimiter) {
+            const lines = csvText.trim().split('\r\n');
+            if (lines.length < 2) return [];
+
+            // Заголовки - первая строка
+            const headers = lines[0].split(delimiter).map(h => h.trim());
+            
+            // Определяем ключи для удобства
+            const keyMap = {
+                'ID номер': 'id',
+                'ФИО': 'name',
+                'Количество пропусков': 'absences'
+            };
+
+            return lines.slice(1).map(line => {
+                const values = line.split(delimiter).map(v => v.trim());
+                const student = {};
+
+                headers.forEach((header, index) => {
+                    const key = keyMap[header] || header;
+                    let value = values[index];
+
+                    // Преобразование "Количество пропусков" и "ID номер" в числа
+                    if (key === 'absences') {
+                        student[key] = parseInt(value, 10) || 0;
+                    } else if (key === 'id') {
+                        student[key] = value; // ID лучше оставить строкой, чтобы сохранить нули
+                    } else {
+                        student[key] = value;
+                    }
+                });
+                return student;
+            });
+        }
+
+        /**
+         * Сортирует данные студентов.
+         * @param {string} key - Ключ для сортировки ('id', 'name', 'absences').
+         */
+        function sortData(key) {
+            let direction = 'asc';
+
+            if (currentSort.key === key) {
+                direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            }
+
+            // Логика сортировки
+            studentData.sort((a, b) => {
+                const aVal = a[key];
+                const bVal = b[key];
+
+                let comparison = 0;
+                if (typeof aVal === 'number' && typeof bVal === 'number') {
+                    comparison = aVal - bVal;
+                } else {
+                    comparison = aVal.localeCompare(bVal, 'ru', { sensitivity: 'base' });
+                }
+
+                return direction === 'asc' ? comparison : comparison * -1;
+            });
+
+            currentSort = { key, direction };
+            renderTable();
+        }
+
+        /**
+         * Рендерит таблицу и обновляет индикаторы сортировки.
+         */
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = ''; // Очистка
+
+            // Обновление заголовков
+            document.querySelectorAll('#student-table th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+                th.classList.add('sort-none');
+                if (th.dataset.key === currentSort.key) {
+                    th.classList.remove('sort-none');
+                    th.classList.add(`sort-${currentSort.direction}`);
+                }
+            });
+
+            if (studentData.length === 0) {
+                 const row = `<tr><td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">Нет данных для отображения.</td></tr>`;
+                 tbody.innerHTML = row;
+                 return;
+            }
+
+            // Рендеринг строк
+            studentData.forEach((student, index) => {
+                const isOdd = index % 2 !== 0;
+                const row = document.createElement('tr');
+                // Визуальное выделение студентов с большим количеством пропусков (> 30)
+                let rowClass = isOdd ? 'bg-gray-50' : 'bg-white';
+                if (student.absences > 30) {
+                    rowClass = 'bg-red-50 hover:bg-red-100 transition duration-150';
+                } else if (student.absences > 15) {
+                    rowClass = 'bg-yellow-50 hover:bg-yellow-100 transition duration-150';
+                }
+                row.className = rowClass;
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">${student.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600' : 'text-gray-900'}">${student.absences}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        /**
+         * Вычисляет и отображает статистику.
+         */
+        function calculateAndRenderStats() {
+            const totalStudents = studentData.length;
+            const totalAbsences = studentData.reduce((sum, student) => sum + student.absences, 0);
+            const avgAbsences = totalStudents > 0 ? (totalAbsences / totalStudents).toFixed(2) : '0.00';
+
+            document.getElementById('total-students').textContent = totalStudents;
+            document.getElementById('total-absences').textContent = totalAbsences;
+            document.getElementById('avg-absences').textContent = avgAbsences;
+        }
+
+        /**
+         * Инициализация приложения.
+         */
+        function initApp() {
+            try {
+                // 1. Парсинг данных
+                studentData = parseCSV(rawCsvData, ';');
+
+                if (studentData.length === 0) {
+                    displayMessage('Ошибка: Не удалось загрузить или разобрать данные из CSV.', 'error');
+                    return;
+                }
+
+                // 2. Вычисление статистики
+                calculateAndRenderStats();
+
+                // 3. Сортировка и рендеринг (применяем сортировку по умолчанию)
+                sortData(currentSort.key);
+
+                // 4. Добавление обработчиков событий для заголовков таблицы
+                document.querySelectorAll('#student-table th').forEach(th => {
+                    th.addEventListener('click', () => {
+                        const key = th.dataset.key;
+                        if (key) {
+                            sortData(key);
+                        }
+                    });
+                });
+
+            } catch (e) {
+                console.error("Ошибка инициализации приложения:", e);
+                displayMessage(`Критическая ошибка: ${e.message}`, 'error');
+            }
+        }
+
+        // Запуск приложения при загрузке страницы
+        window.onload = initApp;
+    </script>
+</body>
+</html>
