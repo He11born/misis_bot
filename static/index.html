@@ -17,7 +17,7 @@
             cursor: pointer;
             user-select: none;
             position: relative;
-            padding-right: 2rem !important; /* Добавляем место для иконки */
+            padding-right: 2rem !important;
         }
         th::after {
             content: ' ';
@@ -33,7 +33,7 @@
         
         /* Стиль для редактируемых ячеек */
         [contenteditable="true"]:focus {
-            outline: 2px solid #3b82f6; /* Blue-500 ring */
+            outline: 2px solid #3b82f6;
             border-radius: 0.25rem;
             padding: 3px;
         }
@@ -52,7 +52,7 @@
     <div class="container-fluid mx-auto">
         <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
             <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
-            <p class="text-gray-600">Данные, загруженные из файла <code class="bg-gray-100 p-1 rounded">разраб.csv</code>. **Кликните на ФИО или количество пропусков для редактирования.**</p>
+            <p class="text-gray-600">Данные динамически загружены из файла <code class="bg-gray-100 p-1 rounded">разраб.csv</code>. **Кликните на ФИО или количество пропусков для редактирования.**</p>
         </header>
 
         <!-- Блок статистики -->
@@ -74,7 +74,12 @@
         <!-- Контейнер таблицы -->
         <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">Список Студентов</h2>
-            <table id="student-table" class="min-w-full divide-y divide-gray-200">
+            <!-- Индикатор загрузки -->
+            <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-blue-600">
+                Загрузка данных из разраб.csv...
+            </div>
+            
+            <table id="student-table" class="min-w-full divide-y divide-gray-200 hidden">
                 <thead class="bg-gray-50">
                     <tr>
                         <th data-key="id" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tl-xl">ID номер</th>
@@ -84,9 +89,6 @@
                 </thead>
                 <tbody id="table-body" class="bg-white divide-y divide-gray-200">
                     <!-- Строки будут добавлены JavaScript -->
-                    <tr class="h-16">
-                        <td colspan="3" class="text-center text-gray-500">Данные загружаются...</td>
-                    </tr>
                 </tbody>
             </table>
         </div>
@@ -99,9 +101,6 @@
     </div>
 
     <script>
-        // Хардкодим данные из CSV
-        const rawCsvData = "ID номер;ФИО;Количество пропусков\r\n2502954;Аржанова Софья Максимовна;8\r\n2505473;Бодрова Ирина Александровна;62\r\n2507138;Демидов Артемий Михайлович ;89\r\n2510235;Дибривный Павел Григорьевич ;28\r\n2513531;Климкина Александра Сергеевна;14\r\n2510678;Козлова Мария Александровна ;6\r\n2508482;Колесниченко Савва Евгеньевич ;16\r\n2505666;Комендантова Арианна Ивановна ;2\r\n2507479;Крылов Максим Вадимович ;18\r\n2509330;Кумаритова София Маратовна;6\r\n2502486;Кухарева Таисия Сергеевна ;4\r\n2514041;Ладыгин Александр Артёмович ;50\r\n2509812;Мельникова Елена Алексеевна ;12\r\n2506434;Пинигина Юлия Вадимовна;8\r\n2516586;Подвойский Виктор Владимирович;12\r\n2507566;Покладова Елизавета Алексеевна ;14\r\n2513544;Семендяева Наталья Сергеевна;45\r\n2506290;Сергачёв Егор Дмитриевич;34";
-
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию
 
@@ -114,18 +113,15 @@
             box.className = 'mt-4 p-4 rounded-lg';
             box.classList.remove('hidden');
             
-            // Настройка стилей в зависимости от типа сообщения
             const styles = {
                 'error': ['bg-red-100', 'border-red-400', 'text-red-700'],
                 'warning': ['bg-yellow-100', 'border-yellow-400', 'text-yellow-700'],
                 'info': ['bg-blue-100', 'border-blue-400', 'text-blue-700']
             };
             
-            // Сброс всех классов и применение нужных
             ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700'].forEach(c => box.classList.remove(c));
             box.classList.add(...(styles[type] || styles['info']));
 
-            // Скрытие сообщения через 5 секунд
             clearTimeout(box.timer);
             box.timer = setTimeout(() => {
                 box.classList.add('hidden');
@@ -136,7 +132,7 @@
          * Парсит CSV-строку в массив объектов.
          */
         function parseCSV(csvText, delimiter) {
-            const lines = csvText.trim().split('\r\n');
+            const lines = csvText.trim().split('\n').filter(line => line.trim() !== ''); // Обработка переносов строк и пустых строк
             if (lines.length < 2) return [];
 
             const headers = lines[0].split(delimiter).map(h => h.trim());
@@ -148,6 +144,7 @@
             };
 
             return lines.slice(1).map(line => {
+                // Используем line.split(delimiter) для корректного разделения
                 const values = line.split(delimiter).map(v => v.trim());
                 const student = {};
 
@@ -208,32 +205,27 @@
             if (key === 'absences') {
                 const parsedValue = parseInt(newValue, 10);
                 if (isNaN(parsedValue) || parsedValue < 0) {
-                    displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом.', 'warning');
-                    // Восстанавливаем старое значение
+                    displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом. Изменение отменено.', 'warning');
                     cell.textContent = studentData[studentIndex][key];
                     return;
                 }
                 studentData[studentIndex][key] = parsedValue;
             } else {
-                // Для ФИО
                 studentData[studentIndex][key] = newValue;
             }
 
-            // Пересчет статистики и обновление таблицы
             calculateAndRenderStats();
-            // Вызываем рендеринг, чтобы обновить стили и возможную сортировку
-            renderTable();
-            displayMessage('Данные успешно обновлены.', 'info');
+            renderTable(); // Перерисовываем для обновления стилей
+            displayMessage('Данные успешно обновлены в приложении.', 'info');
         }
 
         /**
-         * Рендерит таблицу и обновляет индикаторы сортировки, а также прикрепляет обработчики редактирования.
+         * Рендерит таблицу и обновляет индикаторы сортировки.
          */
         function renderTable() {
             const tbody = document.getElementById('table-body');
-            tbody.innerHTML = ''; // Очистка
+            tbody.innerHTML = '';
 
-            // Обновление заголовков сортировки
             document.querySelectorAll('#student-table th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
                 th.classList.add('sort-none');
@@ -249,12 +241,12 @@
                  return;
             }
 
-            // Рендеринг строк
             studentData.forEach((student, index) => {
                 const isOdd = index % 2 !== 0;
                 const row = document.createElement('tr');
                 
                 let rowClass = isOdd ? 'bg-gray-50' : 'bg-white';
+                // Условия для выделения: > 30 - критично, > 15 - повышенное внимание
                 if (student.absences > 30) {
                     rowClass = 'bg-red-50 hover:bg-red-100 transition duration-150';
                 } else if (student.absences > 15) {
@@ -262,7 +254,6 @@
                 }
                 row.className = rowClass;
 
-                // Добавление атрибута contenteditable="true" и data-атрибутов
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.id}</td>
                     <td 
@@ -283,11 +274,9 @@
             
             // Прикрепление обработчиков событий для редактируемых ячеек
             document.querySelectorAll('[contenteditable="true"]').forEach(cell => {
-                // Событие blur (потеря фокуса) для сохранения изменений
-                cell.removeEventListener('blur', handleCellEdit); // Удаляем, чтобы избежать дублирования
+                cell.removeEventListener('blur', handleCellEdit);
                 cell.addEventListener('blur', handleCellEdit);
                 
-                // Предотвращение переноса строки при нажатии Enter и вызов blur для сохранения
                 cell.removeEventListener('keydown', handleCellKeyDown);
                 cell.addEventListener('keydown', handleCellKeyDown);
             });
@@ -299,7 +288,7 @@
         function handleCellKeyDown(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                e.target.blur(); // Вызываем blur, чтобы сохранить изменения
+                e.target.blur();
             }
         }
 
@@ -317,15 +306,31 @@
         }
 
         /**
-         * Инициализация приложения.
+         * Асинхронная инициализация приложения с загрузкой данных.
          */
-        function initApp() {
+        async function initApp() {
+            const loadingIndicator = document.getElementById('loading-indicator');
+            const studentTable = document.getElementById('student-table');
+
+            loadingIndicator.classList.remove('hidden');
+            studentTable.classList.add('hidden');
+
             try {
+                // Динамическая загрузка файла с помощью fetch
+                const response = await fetch('uploaded:разраб.csv');
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки файла: статус ${response.status}`);
+                }
+                
+                const csvText = await response.text();
+                
                 // 1. Парсинг данных
-                studentData = parseCSV(rawCsvData, ';');
+                // В вашем CSV разделитель ';', поэтому используем его
+                studentData = parseCSV(csvText, ';');
 
                 if (studentData.length === 0) {
-                    displayMessage('Ошибка: Не удалось загрузить или разобрать данные из CSV.', 'error');
+                    displayMessage('Ошибка: Файл пуст или содержит неверный формат данных.', 'error');
                     return;
                 }
 
@@ -339,15 +344,20 @@
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
-                        if (key && key !== 'id') { // ID не сортируем по умолчанию
+                        if (key) {
                             sortData(key);
                         }
                     });
                 });
+                
+                loadingIndicator.classList.add('hidden');
+                studentTable.classList.remove('hidden');
 
             } catch (e) {
                 console.error("Ошибка инициализации приложения:", e);
-                displayMessage(`Критическая ошибка: ${e.message}`, 'error');
+                loadingIndicator.textContent = 'Ошибка загрузки данных.';
+                loadingIndicator.classList.add('text-red-600', 'font-bold');
+                displayMessage(`Критическая ошибка при загрузке данных: ${e.message}`, 'error');
             }
         }
 
