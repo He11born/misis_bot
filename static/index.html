@@ -474,8 +474,22 @@
             try {
                 // 1. Инициализация переменных окружения
                 appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                
+                let firebaseConfig = {};
+                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                    try {
+                        firebaseConfig = JSON.parse(__firebase_config);
+                    } catch (e) {
+                        // Ошибка парсинга JSON
+                        throw new Error(`Не удалось разобрать JSON-конфигурацию Firebase: ${e.message}`);
+                    }
+                }
+
+                // *** ПРОВЕРКА КОНФИГУРАЦИИ ***
+                if (!firebaseConfig || !firebaseConfig.projectId) {
+                    // Критическая ошибка: отсутствует необходимый projectId
+                    throw new Error("Конфигурация Firebase недействительна. Отсутствует 'projectId'. Проверьте, что переменная __firebase_config предоставлена.");
+                }
                 
                 document.getElementById('app-id').textContent = appId;
 
@@ -485,9 +499,7 @@
                 auth = getAuth(app);
 
                 // 3. Аутентификация
-                // Используем onAuthStateChanged для гарантии, что Firestore запустится только после аутентификации.
-                // В данном случае, поскольку мы await signInWithCustomToken, onAuthStateChanged будет почти мгновенным, 
-                // но лучше оставить await для надежности.
+                const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -522,9 +534,15 @@
 
             } catch (e) {
                 console.error("Критическая ошибка инициализации приложения:", e);
-                loadingIndicator.textContent = `Критическая ошибка: ${e.message}. Проверьте конфигурацию Firebase.`;
+                
+                // Более четкое сообщение для пользователя
+                const message = e.message.includes('projectId') || e.message.includes('Конфигурация Firebase') 
+                    ? "Не удалось инициализировать Firebase: Конфигурация не предоставлена или недействительна."
+                    : `Критическая ошибка: ${e.message}. Проверьте конфигурацию Firebase.`;
+                    
+                loadingIndicator.textContent = message;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
-                displayMessage(`Критическая ошибка при запуске: ${e.message}`, 'error');
+                displayMessage(message, 'error');
             }
         }
 
