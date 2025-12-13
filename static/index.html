@@ -103,6 +103,8 @@
     <script>
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию
+        const FILE_NAME = 'разраб.csv';
+        const CSV_DELIMITER = ';';
 
         /**
          * Отображает сообщение пользователю (вместо alert)
@@ -119,6 +121,7 @@
                 'info': ['bg-blue-100', 'border-blue-400', 'text-blue-700']
             };
             
+            // Сброс всех классов и применение нужных
             ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700'].forEach(c => box.classList.remove(c));
             box.classList.add(...(styles[type] || styles['info']));
 
@@ -132,11 +135,14 @@
          * Парсит CSV-строку в массив объектов.
          */
         function parseCSV(csvText, delimiter) {
-            const lines = csvText.trim().split('\n').filter(line => line.trim() !== ''); // Обработка переносов строк и пустых строк
+            // Разделение по переносу строки, фильтрация пустых строк
+            const lines = csvText.trim().split('\n').filter(line => line.trim() !== ''); 
             if (lines.length < 2) return [];
 
+            // Заголовки - первая строка
             const headers = lines[0].split(delimiter).map(h => h.trim());
             
+            // Карта для внутренних ключей
             const keyMap = {
                 'ID номер': 'id',
                 'ФИО': 'name',
@@ -144,7 +150,6 @@
             };
 
             return lines.slice(1).map(line => {
-                // Используем line.split(delimiter) для корректного разделения
                 const values = line.split(delimiter).map(v => v.trim());
                 const student = {};
 
@@ -153,6 +158,7 @@
                     let value = values[index];
 
                     if (key === 'absences') {
+                        // Числовое преобразование, если возможно
                         student[key] = parseInt(value, 10) || 0;
                     } else {
                         student[key] = value;
@@ -195,12 +201,13 @@
          */
         function handleCellEdit(event) {
             const cell = event.target;
-            const studentId = cell.dataset.id;
+            // Используем data-index для поиска студента в массиве studentData,
+            // что надежнее, чем data-id, так как данные могут быть отсортированы.
+            const studentIndex = parseInt(cell.dataset.index, 10); 
             const key = cell.dataset.key;
             let newValue = cell.textContent.trim();
 
-            const studentIndex = studentData.findIndex(s => s.id === studentId);
-            if (studentIndex === -1) return;
+            if (isNaN(studentIndex) || studentIndex < 0 || studentIndex >= studentData.length) return;
 
             if (key === 'absences') {
                 const parsedValue = parseInt(newValue, 10);
@@ -215,7 +222,17 @@
             }
 
             calculateAndRenderStats();
-            renderTable(); // Перерисовываем для обновления стилей
+            // Вызываем sortData с текущим ключом, чтобы убедиться, что измененная
+            // строка осталась в нужном месте, если ключ сортировки - 'absences'.
+            if (currentSort.key) {
+                // Временно меняем direction на противоположный, чтобы force sortData 
+                // применил текущий direction (hack)
+                const tempDirection = currentSort.direction;
+                currentSort.direction = tempDirection === 'asc' ? 'desc' : 'asc'; 
+                sortData(currentSort.key);
+            } else {
+                renderTable(); // Если сортировки нет, просто рендерим
+            }
             displayMessage('Данные успешно обновлены в приложении.', 'info');
         }
 
@@ -226,6 +243,7 @@
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
+            // Обновление заголовков сортировки
             document.querySelectorAll('#student-table th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
                 th.classList.add('sort-none');
@@ -254,18 +272,19 @@
                 }
                 row.className = rowClass;
 
+                // Используем index для привязки к элементу в отсортированном studentData
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.id}</td>
                     <td 
                         class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"
                         contenteditable="true"
-                        data-id="${student.id}"
+                        data-index="${index}"
                         data-key="name"
                     >${student.name}</td>
                     <td 
                         class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600' : 'text-gray-900'}"
                         contenteditable="true"
-                        data-id="${student.id}"
+                        data-index="${index}"
                         data-key="absences"
                     >${student.absences}</td>
                 `;
@@ -316,21 +335,25 @@
             studentTable.classList.add('hidden');
 
             try {
-                // Динамическая загрузка файла с помощью fetch
-                const response = await fetch('uploaded:разраб.csv');
+                let csvText;
                 
-                if (!response.ok) {
-                    throw new Error(`Ошибка загрузки файла: статус ${response.status}`);
+                // ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЙ МЕТОД fetchFile ДЛЯ НАДЕЖНОЙ ЗАГРУЗКИ ФАЙЛА
+                if (typeof fetchFile === 'function') {
+                    csvText = await fetchFile(FILE_NAME);
+                } else {
+                    // Fallback для сред, где fetchFile недоступен (старый синтаксис, который давал 404)
+                    const response = await fetch(`uploaded:${FILE_NAME}`);
+                    if (!response.ok) {
+                        throw new Error(`Ошибка загрузки файла: статус ${response.status}. Проверьте имя файла.`);
+                    }
+                    csvText = await response.text();
                 }
-                
-                const csvText = await response.text();
-                
+
                 // 1. Парсинг данных
-                // В вашем CSV разделитель ';', поэтому используем его
-                studentData = parseCSV(csvText, ';');
+                studentData = parseCSV(csvText, CSV_DELIMITER);
 
                 if (studentData.length === 0) {
-                    displayMessage('Ошибка: Файл пуст или содержит неверный формат данных.', 'error');
+                    displayMessage(`Ошибка: Файл "${FILE_NAME}" пуст или содержит неверный формат данных.`, 'error');
                     return;
                 }
 
@@ -355,7 +378,7 @@
 
             } catch (e) {
                 console.error("Ошибка инициализации приложения:", e);
-                loadingIndicator.textContent = 'Ошибка загрузки данных.';
+                loadingIndicator.textContent = `Ошибка загрузки данных: ${e.message}.`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
                 displayMessage(`Критическая ошибка при загрузке данных: ${e.message}`, 'error');
             }
