@@ -52,7 +52,7 @@
     <div class="container-fluid mx-auto">
         <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
             <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
-            <p class="text-gray-600">Данные динамически загружены из файла <code class="bg-gray-100 p-1 rounded">разраб.csv</code>. **Кликните на ФИО или количество пропусков для редактирования.**</p>
+            <p class="text-gray-600">Данные **встроены** в код для обеспечения стабильности. **Кликните на ФИО или количество пропусков для редактирования.**</p>
         </header>
 
         <!-- Блок статистики -->
@@ -74,9 +74,9 @@
         <!-- Контейнер таблицы -->
         <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto">
             <h2 class="text-2xl font-semibold text-gray-800 mb-4">Список Студентов</h2>
-            <!-- Индикатор загрузки -->
+            <!-- Индикатор загрузки (теперь будет быстро скрыт) -->
             <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-blue-600">
-                Загрузка данных из разраб.csv...
+                Инициализация данных...
             </div>
             
             <table id="student-table" class="min-w-full divide-y divide-gray-200 hidden">
@@ -103,18 +103,37 @@
     <script>
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' }; // Сортировка по умолчанию
-        const FILE_NAME = 'разраб.csv';
         const CSV_DELIMITER = ';';
-        const MAX_RETRIES = 3;
-        const RETRY_DELAY_MS = 1000;
+        
+        // Встроенные данные из разраб.csv для обхода ошибки Failed to fetch
+        const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
+2502954;Аржанова Софья Максимовна;18
+2505473;Бодрова Ирина Александровна;72
+2507138;Демидов Артемий Михайлович;123
+2510235;Дибривный Павел Григорьевич;44
+2513531;Климкина Александра Сергеевна;14
+2510678;Козлова Мария Александровна;8
+2508482;Колесниченко Савва Евгеньевич;27
+2505666;Комендантова Арианна Ивановна;6
+2507479;Крылов Максим Вадимович;24
+2509330;Кумаритова София Маратовна;16
+2502486;Кухарева Таисия Сергеевна;22
+2514041;Ладыгин Александр Артёмович;76
+2509812;Мельникова Елена Алексеевна;12
+2506434;Пинигина Юлия Вадимовна;8
+2516586;Подвойский Виктор Владимирович;20
+2507566;Покладова Елизавета Алексеевна;18
+2513544;Семендяева Наталья Сергеевна;63
+2506290;Сергачёв Егор Дмитриевич;8
+2500434;Сказка Дарья Сергеевна;6
+2514293;Фе́филова Мария Алексеевна;25
+2517386;Холина Софья Дмитриевна;27
+2501852;Хомина Лилия Тарасовна;28
+2513503;Яковлева Софья Владимировна;4
+2507065;Ярмошик Лилия Максимовна;6`;
 
         /**
-         * Утилита для задержки
-         */
-        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-        /**
-         * Отображает сообщение пользователю
+         * Displays a message to the user.
          */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
@@ -138,27 +157,25 @@
         }
 
         /**
-         * Парсит CSV-строку в массив объектов.
+         * Parses the CSV string into an array of objects.
          */
         function parseCSV(csvText, delimiter) {
             try {
-                // 1. Нормализация переносов строк: заменяем \r\n и \r на \n
+                // Normalize line breaks and filter empty lines
                 let normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-                
-                // 2. Разделение по \n, фильтрация пустых строк
                 const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
                 
                 if (lines.length < 2) {
                      if (lines.length === 1 && lines[0].split(delimiter).length >= 2) {
                         return []; 
                      }
-                     throw new Error("Недостаточно строк для парсинга (нужен заголовок и данные).");
+                     throw new Error("Not enough rows for parsing (requires header and data).");
                 }
 
-                // Заголовки - первая строка
+                // Headers from the first line
                 const headers = lines[0].split(delimiter).map(h => h.trim());
                 
-                // Карта для внутренних ключей
+                // Map from Russian headers to internal keys
                 const keyMap = {
                     'ID номер': 'id',
                     'ФИО': 'name',
@@ -182,18 +199,18 @@
                     return student;
                 });
                 
-                console.log(`Успешно обработано ${parsedData.length} строк данных.`);
+                console.log(`Successfully processed ${parsedData.length} data rows.`);
                 return parsedData;
 
             } catch (error) {
-                console.error("Ошибка парсинга CSV:", error.message);
-                displayMessage(`Ошибка парсинга CSV: ${error.message}. Проверьте разделитель (используется "${delimiter}") и кодировку.`, 'error');
+                console.error("CSV Parsing Error:", error.message);
+                displayMessage(`Ошибка парсинга встроенных данных: ${error.message}. Проверьте формат CSV.`, 'error');
                 return [];
             }
         }
 
         /**
-         * Сортирует данные студентов.
+         * Sorts student data.
          */
         function sortData(key) {
             let direction = 'asc';
@@ -221,10 +238,11 @@
         }
 
         /**
-         * Обрабатывает изменение данных в ячейке.
+         * Handles data change in an editable cell.
          */
         function handleCellEdit(event) {
             const cell = event.target;
+            // Get index from the cell's data attribute
             const studentIndex = parseInt(cell.dataset.index, 10); 
             const key = cell.dataset.key;
             let newValue = cell.textContent.trim();
@@ -245,8 +263,10 @@
 
             calculateAndRenderStats();
             
+            // Re-sort to reflect changes, maintaining current direction
             if (currentSort.key) {
                 const tempDirection = currentSort.direction;
+                // Temporarily reverse direction to force resort in the same direction
                 currentSort.direction = tempDirection === 'asc' ? 'desc' : 'asc'; 
                 sortData(currentSort.key);
             } else {
@@ -256,13 +276,13 @@
         }
 
         /**
-         * Рендерит таблицу и обновляет индикаторы сортировки.
+         * Renders the table and updates sorting indicators.
          */
         function renderTable() {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
 
-            // Обновление заголовков сортировки
+            // Update sorting headers
             document.querySelectorAll('#student-table th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
                 th.classList.add('sort-none');
@@ -290,7 +310,6 @@
                 }
                 row.className = rowClass;
 
-                // Используем index для привязки к элементу в отсортированном studentData
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.id}</td>
                     <td 
@@ -309,7 +328,7 @@
                 tbody.appendChild(row);
             });
             
-            // Прикрепление обработчиков событий для редактируемых ячеек
+            // Attach event handlers for editable cells
             document.querySelectorAll('[contenteditable="true"]').forEach(cell => {
                 cell.removeEventListener('blur', handleCellEdit);
                 cell.addEventListener('blur', handleCellEdit);
@@ -320,7 +339,7 @@
         }
         
         /**
-         * Обработчик нажатия клавиш для предотвращения переноса строки.
+         * Keydown handler to prevent line breaks in editable cells.
          */
         function handleCellKeyDown(e) {
             if (e.key === 'Enter') {
@@ -330,7 +349,7 @@
         }
 
         /**
-         * Вычисляет и отображает статистику.
+         * Calculates and displays statistics.
          */
         function calculateAndRenderStats() {
             const totalStudents = studentData.length;
@@ -343,63 +362,32 @@
         }
 
         /**
-         * Асинхронная инициализация приложения с загрузкой данных, включая механизм повторных попыток.
+         * Synchronous application initialization using embedded data.
          */
-        async function initApp() {
+        function initApp() {
             const loadingIndicator = document.getElementById('loading-indicator');
             const studentTable = document.getElementById('student-table');
-            const fetchUrl = `uploaded:${FILE_NAME}`; // Возвращаемся к прямому пути
-
-            loadingIndicator.classList.remove('hidden');
-            studentTable.classList.add('hidden');
 
             try {
-                let csvText = null;
-                let lastError = null;
+                // Use embedded data
+                const csvText = EMBEDDED_CSV_DATA;
 
-                for (let i = 0; i < MAX_RETRIES; i++) {
-                    loadingIndicator.textContent = `Загрузка данных из ${FILE_NAME}... (Попытка ${i + 1}/${MAX_RETRIES})`;
-                    try {
-                        // 1. Попытка загрузки
-                        const response = await fetch(fetchUrl);
-                        
-                        if (!response.ok) {
-                            throw new Error(`Статус ${response.status} (${response.statusText}).`);
-                        }
-                        
-                        csvText = await response.text();
-                        break; // Успешно загружено, выходим из цикла
-                        
-                    } catch (e) {
-                        lastError = e;
-                        console.warn(`Ошибка при попытке загрузки №${i + 1}: ${e.message}`);
-                        if (i < MAX_RETRIES - 1) {
-                            await delay(RETRY_DELAY_MS);
-                        }
-                    }
-                }
-                
-                if (csvText === null) {
-                    // Если после всех попыток не удалось загрузить
-                    throw new Error(`Failed to fetch: Не удалось загрузить файл после ${MAX_RETRIES} попыток. Последняя ошибка: ${lastError ? lastError.message : 'Неизвестно'}`);
-                }
-                
-                // 2. Парсинг данных
+                // 1. Parse data
                 studentData = parseCSV(csvText, CSV_DELIMITER);
 
                 if (studentData.length === 0) {
-                    loadingIndicator.textContent = `Данные не найдены. Проверьте содержимое "${FILE_NAME}".`;
+                    loadingIndicator.textContent = `Данные не найдены. Встроенный CSV пуст или некорректен.`;
                     loadingIndicator.classList.add('text-red-600', 'font-bold');
                     return;
                 }
 
-                // 3. Вычисление статистики
+                // 2. Calculate statistics
                 calculateAndRenderStats();
 
-                // 4. Сортировка и рендеринг 
+                // 3. Sort and render
                 sortData(currentSort.key);
 
-                // 5. Обработчики для сортировки
+                // 4. Sort handlers
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
@@ -413,14 +401,14 @@
                 studentTable.classList.remove('hidden');
 
             } catch (e) {
-                console.error("Критическая ошибка инициализации:", e);
-                loadingIndicator.textContent = `Критическая ошибка загрузки: ${e.message}`;
+                console.error("Critical Initialization Error:", e);
+                loadingIndicator.textContent = `Критическая ошибка обработки встроенных данных: ${e.message}`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
-                displayMessage(`Критическая ошибка при загрузке данных: ${e.message}.`, 'error');
+                displayMessage(`Критическая ошибка при обработке данных: ${e.message}.`, 'error');
             }
         }
 
-        // Запуск приложения при загрузке страницы
+        // Run application on page load
         window.onload = initApp;
     </script>
 </body>
