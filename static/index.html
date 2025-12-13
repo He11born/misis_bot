@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анализ Пропусков Студентов (Локальный режим)</title>
+    <title>Анализ Пропусков Студентов (Локальное Хранение)</title>
     <!-- Подключение Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -59,8 +59,8 @@
         
         <!-- Контейнер для критических предупреждений -->
         <div id="critical-warning" class="hidden mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg" role="alert">
-            <p class="font-bold">Критическое предупреждение!</p>
-            <p id="warning-message">Приложение работает в **ЛОКАЛЬНОМ РЕЖИМЕ**. Конфигурация Firebase недействительна. Данные **НЕ БУДУТ** сохраняться при перезагрузке.</p>
+            <p class="font-bold">Внимание: Режим Local Storage!</p>
+            <p id="warning-message">Конфигурация Firebase недействительна. Данные сохраняются в **Local Storage** вашего браузера. Изменения персистентны, но доступны только вам.</p>
         </div>
 
 
@@ -110,7 +110,7 @@
     </div>
 
     <script type="module">
-        // Импорты Firebase остаются, но будут использоваться условно
+        // Импорты Firebase остаются для попытки инициализации
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -143,17 +143,17 @@
 2507065;Ярмошик Лилия Максимовна;6`;
         
         const CSV_DELIMITER = ';';
+        const LOCAL_STORAGE_KEY = 'studentAbsenceData'; // Ключ для Local Storage
+        
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
         
-        let db = null; // Будет null, если Firebase не инициализирован
+        let db = null; 
         let auth = null;
         let userId = 'unknown';
         let appId;
         const COLLECTION_NAME = 'students';
-        let isFirestoreReady = false; // Флаг для проверки доступности Firestore
-
-        // setLogLevel('debug'); // Оставляем закомментированным, чтобы не спамить консоль при ошибке
+        let isFirestoreReady = false; 
 
         /**
          * Утилита для ожидания (для повторных попыток).
@@ -167,7 +167,7 @@
          */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
-            box.innerHTML = message; // Используем innerHTML для поддержки форматирования
+            box.innerHTML = message;
             box.className = 'mt-4 p-4 rounded-lg';
             box.classList.remove('hidden');
             
@@ -177,6 +177,7 @@
                 'info': ['bg-blue-100', 'border-blue-400', 'text-blue-700']
             };
             
+            // Удаляем все классы стилей перед добавлением новых
             ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700'].forEach(c => box.classList.remove(c));
             box.classList.add(...(styles[type] || styles['info']));
 
@@ -187,9 +188,10 @@
         }
 
         /**
-         * Парсит CSV-строку во временный массив объектов для инициализации.
+         * Парсит CSV-строку во временный массив объектов.
          */
         function parseCSV(csvText, delimiter) {
+            // [Оригинальная функция parseCSV, без изменений, для краткости]
             try {
                 let normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
                 const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
@@ -217,20 +219,52 @@
                             student[key] = value;
                         }
                     });
-                    // Firestore requires a document ID, we use the student ID for that.
                     student.docId = student.id.toString(); 
                     return student;
                 });
             } catch (error) {
                 console.error("Ошибка парсинга CSV:", error.message);
-                displayMessage(`Ошибка парсинга встроенного CSV: ${error.message}.`, 'error');
                 return [];
             }
         }
         
+        // --- Local Storage Analog Functions (NEW) ---
+
         /**
-         * Получает путь к публичной коллекции Firestore.
+         * Загружает данные из Local Storage.
          */
+        function loadFromLocalStorage() {
+            try {
+                const json = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (json) {
+                    const data = JSON.parse(json);
+                    console.log(`[Local Storage] Загружено ${data.length} записей.`);
+                    return data;
+                }
+            } catch (e) {
+                console.error("[Local Storage] Ошибка загрузки данных:", e);
+            }
+            return [];
+        }
+
+        /**
+         * Сохраняет текущие данные в Local Storage.
+         */
+        function saveToLocalStorage(data) {
+            try {
+                const json = JSON.stringify(data);
+                localStorage.setItem(LOCAL_STORAGE_KEY, json);
+                // console.log(`[Local Storage] Сохранено ${data.length} записей.`);
+                return true;
+            } catch (e) {
+                console.error("[Local Storage] Ошибка сохранения данных:", e);
+                displayMessage('Критическая ошибка: Не удалось сохранить данные в Local Storage.', 'error');
+                return false;
+            }
+        }
+        
+        // --- Firebase Functions (Conditional) ---
+
         function getCollectionPath() {
             if (!appId) {
                 console.error("App ID не определен. Невозможно получить путь коллекции.");
@@ -239,19 +273,15 @@
             return `artifacts/${appId}/public/data/${COLLECTION_NAME}`;
         }
         
-        /**
-         * Записывает данные из CSV в Firestore, если коллекция пуста.
-         */
         async function initializeFirestoreIfEmpty(data) {
             if (!isFirestoreReady) return;
-
+            // [Оригинальная функция initializeFirestoreIfEmpty]
             const path = getCollectionPath();
             if (!path) return;
             
             const studentsCollectionRef = collection(db, path);
-            
-            // Проверяем, есть ли уже документы
             const snapshot = await getDocs(studentsCollectionRef);
+            
             if (snapshot.size > 0) {
                 console.log("Firestore уже содержит данные. Инициализация из CSV не требуется.");
                 return;
@@ -265,52 +295,14 @@
                 const docRef = doc(db, path, docId);
                 await setDoc(docRef, studentData).catch(e => {
                     console.error("Ошибка при сохранении документа:", e);
-                    displayMessage(`Ошибка сохранения ID ${docId}: ${e.message}`, 'error');
                 });
             }
             console.log("Инициализация завершена.");
         }
 
-        /**
-         * Обновляет данные в Firestore при редактировании ячейки с механизмом повторных попыток.
-         * @returns {boolean} True, если сохранение успешно, False в противном случае.
-         */
-        async function updateStudentInFirestore(studentId, key, value) {
-            if (!isFirestoreReady) {
-                console.warn("[Firestore] Пропущена попытка сохранения: Firestore не готов.");
-                return false;
-            }
-
-            const path = getCollectionPath();
-            if (!path) return false;
-
-            const MAX_RETRIES = 3;
-            for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-                try {
-                    const docRef = doc(db, path, studentId.toString());
-                    const updatePayload = { [key]: value };
-                    await setDoc(docRef, updatePayload, { merge: true });
-                    console.log(`[Firestore] Успешно обновлено ID ${studentId} (Попытка ${attempt + 1})`);
-                    return true; // Успех
-                } catch (error) {
-                    console.error(`[Firestore] Ошибка обновления ID ${studentId} (Попытка ${attempt + 1}):`, error);
-                    if (attempt === MAX_RETRIES - 1) {
-                        // Последняя попытка не удалась
-                        displayMessage(`КРИТИЧЕСКАЯ ОШИБКА СОХРАНЕНИЯ в Firestore: ${error.message}. Проверьте консоль для деталей!`, 'error');
-                        return false;
-                    }
-                    // Ждем перед следующей попыткой: 1s, 2s, 4s
-                    await sleep(1000 * Math.pow(2, attempt)); 
-                }
-            }
-        }
-
-        /**
-         * Запускает слушатель Firestore для реального времени.
-         */
         function startFirestoreListener() {
             if (!isFirestoreReady) return;
-
+            // [Оригинальная функция startFirestoreListener]
             const path = getCollectionPath();
             if (!path) return;
             
@@ -329,7 +321,6 @@
                 
                 console.log(`Данные обновлены из Firestore. Получено ${studentData.length} документов.`);
                 
-                // Пересчитываем статистику и рендерим таблицу
                 calculateAndRenderStats();
                 sortData(currentSort.key);
                 
@@ -342,9 +333,43 @@
             });
         }
         
+        /**
+         * Единая функция сохранения (обращается либо к Firestore, либо к Local Storage).
+         * @returns {boolean} True, если сохранение успешно, False в противном случае.
+         */
+        async function saveStudentData(docId, key, value) {
+            if (isFirestoreReady) {
+                // Логика сохранения в Firestore
+                const path = getCollectionPath();
+                if (!path) return false;
+    
+                const MAX_RETRIES = 3;
+                for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                    try {
+                        const docRef = doc(db, path, docId.toString());
+                        const updatePayload = { [key]: value };
+                        await setDoc(docRef, updatePayload, { merge: true });
+                        console.log(`[Firestore] Успешно обновлено ID ${docId} (Попытка ${attempt + 1})`);
+                        return true; 
+                    } catch (error) {
+                        console.error(`[Firestore] Ошибка обновления ID ${docId} (Попытка ${attempt + 1}):`, error);
+                        if (attempt === MAX_RETRIES - 1) {
+                            displayMessage(`КРИТИЧЕСКАЯ ОШИБКА СОХРАНЕНИЯ в Firestore: ${error.message}.`, 'error');
+                            return false;
+                        }
+                        await sleep(1000 * Math.pow(2, attempt)); 
+                    }
+                }
+            } else {
+                // Логика сохранения в Local Storage (аналог)
+                return saveToLocalStorage(studentData);
+            }
+        }
+
         // --- UI and Local Logic Functions ---
 
         function sortData(key) {
+            // [Оригинальная функция sortData, без изменений]
             let direction = 'asc';
             if (currentSort.key === key) {
                 direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
@@ -372,8 +397,6 @@
             if (studentIndex === -1) return;
 
             const student = studentData[studentIndex];
-
-            // Запоминаем старое значение на случай неудачи
             const oldValue = student[key];
             let valueToSave = newValue;
 
@@ -381,7 +404,7 @@
                 const parsedValue = parseInt(newValue, 10);
                 if (isNaN(parsedValue) || parsedValue < 0) {
                     displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом. Изменение отменено.', 'warning');
-                    cell.textContent = oldValue; // Возвращаем старое значение в UI
+                    cell.textContent = oldValue;
                     return;
                 }
                 valueToSave = parsedValue;
@@ -389,32 +412,35 @@
             
             // 1. Обновляем локальные данные
             studentData[studentIndex][key] = valueToSave;
-            cell.textContent = valueToSave; // Обновляем ячейку
-
+            cell.textContent = valueToSave; 
             calculateAndRenderStats();
-            // renderTable(); // Перерисовка не требуется, если меняется только ячейка
 
             if (isFirestoreReady) {
-                displayMessage('Отправка данных на сервер...', 'info');
-                // 2. Отправляем изменение в Firestore (ожидаем результат)
-                const success = await updateStudentInFirestore(docId, key, valueToSave);
+                displayMessage('Отправка данных на сервер (Firestore)...', 'info');
+                const success = await saveStudentData(docId, key, valueToSave);
 
-                if (success) {
-                    // Firestore Listener должен подтвердить это изменение и обновить всю таблицу
-                    displayMessage('Данные успешно сохранены.', 'info');
-                } else {
-                    // Если сохранение не удалось, откатываем UI к старому значению, чтобы показать неудачу
+                if (!success) {
                     studentData[studentIndex][key] = oldValue;
                     cell.textContent = oldValue; 
-                    calculateAndRenderStats(); // Обновить статистику после отката
-                    // Сообщение об ошибке уже выведено в updateStudentInFirestore
+                    calculateAndRenderStats(); 
                 }
             } else {
-                displayMessage('Изменение сохранено локально. Сохранение в базу данных недоступно.', 'warning');
+                displayMessage('Сохранение в Local Storage...', 'info');
+                const success = saveStudentData(docId, key, valueToSave); 
+                
+                if (success) {
+                    displayMessage('Изменение сохранено в Local Storage браузера.', 'info');
+                } else {
+                    // Откат, если Local Storage не сработал
+                    studentData[studentIndex][key] = oldValue;
+                    cell.textContent = oldValue; 
+                    calculateAndRenderStats(); 
+                }
             }
         }
         
         function renderTable() {
+            // [Оригинальная функция renderTable, без изменений]
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
             
@@ -464,7 +490,6 @@
             });
             
             document.querySelectorAll('[contenteditable="true"]').forEach(cell => {
-                // Удаляем старые, добавляем новые обработчики
                 cell.removeEventListener('blur', handleCellEdit);
                 cell.addEventListener('blur', handleCellEdit);
                 
@@ -481,6 +506,7 @@
         }
 
         function calculateAndRenderStats() {
+            // [Оригинальная функция calculateAndRenderStats, без изменений]
             const totalStudents = studentData.length;
             const totalAbsences = studentData.reduce((sum, student) => sum + (student.absences || 0), 0);
             const avgAbsences = totalStudents > 0 ? (totalAbsences / totalStudents).toFixed(2) : '0.00';
@@ -491,14 +517,14 @@
         }
 
 
-        // --- FIREBASE INITIALIZATION ---
+        // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ---
 
         async function initApp() {
             const loadingIndicator = document.getElementById('loading-indicator');
             loadingIndicator.textContent = "Инициализация данных...";
 
             try {
-                // 1. Инициализация переменных окружения
+                // 1. Инициализация переменных окружения и проверка конфига Firebase
                 appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                 document.getElementById('app-id').textContent = appId;
                 
@@ -512,19 +538,17 @@
                             configProvided = true;
                         }
                     } catch (e) {
-                        console.error("Ошибка парсинга JSON-конфигурации Firebase:", e);
-                        // configProvided остается false
+                        // Ошибка парсинга - конфиг недействителен
                     }
                 }
 
                 // 2. Условная инициализация Firebase
                 if (configProvided) {
-                    console.log("Конфигурация Firebase обнаружена. Попытка подключения...");
+                    // *** РЕЖИМ FIREBASE (предпочтительный) ***
                     const app = initializeApp(firebaseConfig);
                     db = getFirestore(app);
                     auth = getAuth(app);
 
-                    // Аутентификация
                     const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
                     if (initialAuthToken) {
                         await signInWithCustomToken(auth, initialAuthToken);
@@ -534,12 +558,10 @@
 
                     userId = auth.currentUser?.uid || 'N/A';
                     document.getElementById('user-id').textContent = userId;
-                    console.log(`Аутентификация успешна. User ID: ${userId}`);
                     isFirestoreReady = true;
 
-                    document.getElementById('app-status').innerHTML = 'Данные сохраняются в **Firebase Firestore**. Редактируйте ячейки, и изменения будут постоянными при перезагрузке.';
+                    document.getElementById('app-status').innerHTML = 'Данные сохраняются в **Firebase Firestore**. Редактируйте ячейки, и изменения будут постоянными.';
 
-                    // Инициализация и слушатель (через Firestore)
                     const initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
                     if (initialData.length > 0) {
                         await initializeFirestoreIfEmpty(initialData);
@@ -548,16 +570,25 @@
                     startFirestoreListener();
 
                 } else {
-                    // *** КРИТИЧЕСКИЙ FALLBACK: ЛОКАЛЬНЫЙ РЕЖИМ ***
-                    console.warn("Конфигурация Firebase отсутствует. Запуск в ЛОКАЛЬНОМ РЕЖИМЕ.");
+                    // *** РЕЖИМ LOCAL STORAGE (аналог Firebase) ***
+                    console.warn("Конфигурация Firebase отсутствует. Запуск в режиме Local Storage.");
                     isFirestoreReady = false;
                     
                     document.getElementById('critical-warning').classList.remove('hidden');
-                    document.getElementById('user-id').textContent = 'ЛОКАЛЬНО';
-                    document.getElementById('app-status').innerHTML = 'Внимание: **СОХРАНЕНИЕ В БАЗУ ДАННЫХ НЕДОСТУПНО**. Изменения будут потеряны при перезагрузке.';
+                    document.getElementById('user-id').textContent = 'LOCAL_STORAGE';
+                    document.getElementById('app-status').innerHTML = 'Внимание: **СОХРАНЕНИЕ В БАЗУ ДАННЫХ НЕДОСТУПНО**. Используется Local Storage.';
 
-                    // Загрузка данных из CSV и локальный рендеринг
-                    const initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                    // Попытка загрузки из Local Storage, затем fallback на CSV
+                    let initialData = loadFromLocalStorage();
+                    if (initialData.length === 0) {
+                        initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                        // Если загрузили CSV, сохраняем его в Local Storage для персистентности
+                        saveToLocalStorage(initialData); 
+                        displayMessage('Данные загружены из CSV и сохранены в Local Storage.', 'warning');
+                    } else {
+                         displayMessage('Данные загружены из Local Storage браузера.', 'info');
+                    }
+                    
                     studentData = initialData;
                     
                     calculateAndRenderStats();
@@ -565,10 +596,9 @@
                     
                     document.getElementById('loading-indicator').classList.add('hidden');
                     document.getElementById('student-table').classList.remove('hidden');
-                    displayMessage('Приложение работает в локальном режиме. Сохранение отключено.', 'error');
                 }
 
-                // Обработчики для сортировки (один раз)
+                // Обработчики для сортировки
                 document.querySelectorAll('#student-table th').forEach(th => {
                     th.addEventListener('click', () => {
                         const key = th.dataset.key;
@@ -579,15 +609,11 @@
                 });
 
             } catch (e) {
-                // Если произошла ошибка ПРИ ИНИЦИАЛИЗАЦИИ, даже если конфиг был
+                // Обработка любых критических ошибок инициализации
                 console.error("Критическая ошибка инициализации приложения:", e);
-                loadingIndicator.textContent = `Критическая ошибка: ${e.message}. Не удалось запустить даже локальный режим.`;
+                loadingIndicator.textContent = `Критическая ошибка: ${e.message}. Не удалось запустить.`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
                 displayMessage(`Критическая ошибка при запуске: ${e.message}`, 'error');
-                
-                // В этом случае мы все равно показываем предупреждение, что Firebase не работает
-                document.getElementById('critical-warning').classList.remove('hidden');
-                document.getElementById('warning-message').textContent = `Сбой инициализации Firebase: ${e.message}. Приложение работает в **ЛОКАЛЬНОМ РЕЖИМЕ** (без сохранения).`;
             }
         }
 
