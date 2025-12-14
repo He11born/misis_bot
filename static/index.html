@@ -123,7 +123,7 @@
         // =================================================================
         // ВНИМАНИЕ: Замените заглушку токена вашим реальным токеном.
         // Токен должен иметь права на запись (repo scope).
-        const GITHUB_TOKEN = "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"; 
+        const GITHUB_TOKEN = "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"; 
         const REPO_OWNER = "He11born"; 
         const REPO_NAME = "misis_bot"; 
         const FILE_PATH = "разраб.csv"; // Путь к файлу в репозитории
@@ -165,13 +165,9 @@
         
         // Упрощение: Firebase не используется
         let isFirestoreReady = false; 
-
-        /**
-         * Утилита для ожидания (для повторных попыток).
-         */
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
+        
+        // Глобальная переменная для хранения SHA последнего состояния файла с GitHub
+        let currentFileSHA = null; 
 
         /**
          * Обновляет статус синхронизации с GitHub на UI.
@@ -217,6 +213,48 @@
             }, 5000);
         }
 
+        // =================================================================
+        //                   УТИЛИТЫ BASE64 / UNICODE
+        // =================================================================
+        
+        /** Кодирует строку UTF-8 в Uint8Array. */
+        function utf8Encode(str) {
+            return new TextEncoder().encode(str);
+        }
+        
+        /** Декодирует Uint8Array в строку UTF-8. */
+        function utf8Decode(bytes) {
+            return new TextDecoder().decode(bytes);
+        }
+
+        /** Декодирует Base64 в строку UTF-8 (для кириллицы). */
+        function base64ToUtf8(base64) {
+            try {
+                // Убираем возможные пробелы/переносы строк
+                const binaryString = atob(base64.replace(/\s/g, ''));
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                return utf8Decode(bytes);
+            } catch (e) {
+                console.error("Ошибка декодирования Base64:", e);
+                return '';
+            }
+        }
+
+        /** Кодирует строку UTF-8 в Base64 (для кириллицы). */
+        function utf8ToBase64(str) {
+            const bytes = utf8Encode(str);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+        
+        // =================================================================
+
         /**
          * Парсит CSV-строку во временный массив объектов.
          */
@@ -236,27 +274,17 @@
                 };
 
                 return lines.slice(1).map(line => {
-                    // Используем регулярное выражение для учета кавычек в CSV
                     const values = [];
                     let match;
                     const regex = /(?:^|;)\s*(?:"([^"]*(?:""[^"]*)*)"|([^;]*))/g;
                     
-                    // Хак для корректного парсинга всех столбцов в строке, включая пустые,
-                    // и обработки кавычек, так как .split(";") некорректно обрабатывает кавычки.
-                    // Если строка начинается с ;, match[1] и match[2] будут undefined, нужно учесть
-                    let lastIndex = 0;
                     while (match = regex.exec(line)) {
-                        // Если есть текст между разделителем и началом match, это пустой столбец
-                        // Но наш regex должен ловить пустые, если они разделены ';'
-                        // Упрощенный подход: берем то, что в кавычках (match[1]), или без (match[2])
                         let value = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
                         if (value !== undefined) {
                             values.push(value.trim());
                         } else if (match[0].startsWith(';')) {
-                            // Пустой столбец после разделителя
                             values.push('');
                         }
-                        lastIndex = regex.lastIndex;
                     }
 
                     const student = {};
@@ -312,8 +340,57 @@
             }
         }
         
-        // --- GitHub API Functions (NEW) ---
+        // --- GitHub API Functions ---
         
+        /**
+         * Загружает и декодирует CSV-файл с GitHub.
+         * @returns {Promise<{csvContent: string | null, sha: string | null}>}
+         */
+        async function fetchContentFromGitHub() {
+            if (GITHUB_TOKEN === "YOUR_PERSONAL_ACCESS_TOKEN_HERE" || !REPO_OWNER || !REPO_NAME) {
+                return { csvContent: null, sha: null };
+            }
+            
+            try {
+                const response = await fetch(API_URL, {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3.raw+json' // Принимаем raw+json для лучшей обработки контента
+                    }
+                });
+
+                if (response.status === 404) {
+                    console.warn(`[GitHub] Файл ${FILE_PATH} не найден (404).`);
+                    return { csvContent: null, sha: null };
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`GET failed: ${response.status} - ${errorData.message}`);
+                }
+                
+                // Для получения SHA, нам нужен не raw, а стандартный JSON-ответ.
+                // Выполним второй запрос, чтобы получить SHA
+                const shaResponse = await fetch(API_URL, {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                const shaData = await shaResponse.json();
+                
+                // Содержимое файла (text) из первого ответа
+                const csvContent = await response.text(); 
+                
+                return { csvContent: csvContent, sha: shaData.sha };
+
+            } catch (e) {
+                console.error("[GitHub Fetch Error]:", e);
+                displayMessage(`Ошибка при загрузке данных с GitHub: ${e.message.substring(0, 80)}`, 'error');
+                return { csvContent: null, sha: null };
+            }
+        }
+
         /**
          * Конвертирует текущие данные в строку CSV.
          */
@@ -347,40 +424,44 @@
             
             updateGitHubStatus("Отправка изменений...", 'bg-yellow-500');
 
-            // 1. Получаем текущее состояние файла (SHA)
-            let sha = null;
-            try {
-                const response = await fetch(API_URL, {
-                    headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
-                        'Accept': 'application/vnd.github.v3+json'
+            // Используем SHA, полученный при последней загрузке
+            let sha = currentFileSHA;
+            
+            // Если SHA нет (например, файл не существовал), попробуем получить его, чтобы не перезаписать чужие изменения
+            if (!sha) {
+                // Выполняем GET-запрос для получения SHA перед PUT
+                try {
+                    const response = await fetch(API_URL, {
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+                    if (response.status === 200) {
+                        const fileData = await response.json();
+                        sha = fileData.sha;
+                        currentFileSHA = sha; // Обновляем глобальный SHA
+                    } else if (response.status === 404) {
+                        sha = null; // Файл будет создан
+                    } else {
+                        const errorData = await response.json();
+                        throw new Error(`GET SHA failed: ${response.status} - ${errorData.message}`);
                     }
-                });
-                
-                if (response.status === 404) {
-                    console.warn(`[GitHub] Файл ${FILE_PATH} не найден. Будет создан.`);
-                    sha = null; // SHA не нужен для создания
-                } else if (!response.ok) {
-                     const errorData = await response.json();
-                     throw new Error(`GET failed: ${response.status} - ${errorData.message}`);
-                } else {
-                    const fileData = await response.json();
-                    sha = fileData.sha;
+                } catch (e) {
+                    console.error("[GitHub Sync Error] GET SHA:", e);
+                    updateGitHubStatus(`Ошибка GET (SHA): ${e.message.substring(0, 50)}...`, 'bg-red-500', true);
+                    return false;
                 }
-            } catch (e) {
-                console.error("[GitHub Sync Error] GET SHA:", e);
-                updateGitHubStatus(`Ошибка GET: ${e.message.substring(0, 50)}...`, 'bg-red-500', true);
-                return false;
             }
 
-            // 2. Кодируем новое содержимое в Base64
-            // Используем encodeURIComponent и unescape для корректной работы с кириллицей в Base64
-            const newCSVContent = dataToCSV(studentData);
-            const base64Content = btoa(unescape(encodeURIComponent(newCSVContent)));
 
+            // 2. Кодируем новое содержимое в Base64 (надежный способ для кириллицы)
+            const newCSVContent = dataToCSV(studentData);
+            const base64Content = utf8ToBase64(newCSVContent);
 
             // 3. Отправляем PUT-запрос для обновления
-            const commitMessage = `Обновление данных о пропусках [${new Date().toLocaleString('ru-RU')}]`;
+            const action = sha ? "Обновление" : "Создание";
+            const commitMessage = `${action} данных о пропусках [${new Date().toLocaleString('ru-RU')}]`;
             
             const payload = {
                 message: commitMessage,
@@ -403,6 +484,9 @@
                     const errorData = await putResponse.json();
                     throw new Error(`PUT failed: ${putResponse.status} - ${errorData.message}`);
                 }
+                
+                const resultData = await putResponse.json();
+                currentFileSHA = resultData.content.sha; // Обновляем SHA после успешного коммита
 
                 updateGitHubStatus("Успешно синхронизировано!", 'bg-green-500');
                 return true;
@@ -579,16 +663,36 @@
             }
 
             try {
-                // Инициализация переменных окружения (упрощено, так как Firebase не используется)
-                // App ID и User ID просто скрыты
-                
                 let initialData = loadFromLocalStorage();
+                let loadedFrom = 'Local Storage';
+                
                 if (initialData.length === 0) {
-                    initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
-                    saveToLocalStorage(initialData); 
-                    displayMessage('Данные загружены из CSV по умолчанию и сохранены в Local Storage.', 'warning');
+                    // Попытка загрузки с GitHub, если Local Storage пуст
+                    updateGitHubStatus("Загрузка данных с GitHub...", 'bg-blue-500');
+                    const githubResult = await fetchContentFromGitHub();
+                    
+                    if (githubResult.csvContent) {
+                        initialData = parseCSV(githubResult.csvContent, CSV_DELIMITER);
+                        currentFileSHA = githubResult.sha;
+                        loadedFrom = 'GitHub';
+                        updateGitHubStatus("Данные успешно загружены с GitHub.", 'bg-green-500');
+                    } else {
+                        // Если нет данных ни в LS, ни на GitHub (или ошибка/404)
+                        initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                        loadedFrom = 'CSV по умолчанию';
+                        updateGitHubStatus("Синхронизация GitHub: Используется Local Storage.", 'bg-gray-500');
+                    }
+                    
+                    if (initialData.length > 0) {
+                        saveToLocalStorage(initialData);
+                        displayMessage(`Данные загружены из ${loadedFrom} и сохранены в Local Storage.`, 'info');
+                    } else if (loadedFrom === 'CSV по умолчанию') {
+                        displayMessage('Критическая ошибка: Не удалось загрузить данные. Используется пустой набор.', 'error');
+                    }
                 } else {
-                     displayMessage('Данные загружены из Local Storage браузера.', 'info');
+                    // Если данные есть в Local Storage, просто устанавливаем статус
+                    updateGitHubStatus("Готов к синхронизации.", 'bg-gray-500');
+                    displayMessage('Данные загружены из Local Storage браузера.', 'info');
                 }
                 
                 studentData = initialData;
