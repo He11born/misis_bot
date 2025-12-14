@@ -53,17 +53,14 @@
         <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
             <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
             <p id="app-status" class="text-gray-600">
-                <span class="text-xs text-gray-400 block mt-1">App ID: <span id="app-id">...</span> | User ID: <span id="user-id">...</span></span>
+                <span class="text-xs text-gray-400 block mt-1">
+                    Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API** (требуется настройка токена).
+                    <span id="app-id" class="hidden">...</span>
+                    <span id="user-id" class="hidden">...</span>
+                </span>
             </p>
         </header>
         
-        <!-- Контейнер для критических предупреждений -->
-        <div id="critical-warning" class="hidden mb-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded-lg" role="alert">
-            <p class="font-bold">Внимание: Режим Local Storage!</p>
-            <p id="warning-message">Конфигурация Firebase недействительна. Данные сохраняются в **Local Storage** вашего браузера и синхронизируются с GitHub.</p>
-        </div>
-
-
         <!-- Блок статистики -->
         <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-500">
@@ -116,7 +113,7 @@
     </div>
 
     <script type="module">
-        // Импорты Firebase
+        // Импорты Firebase - сохранены для совместимости, но не используются
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -124,7 +121,7 @@
         // =================================================================
         //                 НАСТРОЙКИ GITHUB API (ОБЯЗАТЕЛЬНО)
         // =================================================================
-        // ВНИМАНИЕ: Замените эти заглушки вашими реальными данными.
+        // ВНИМАНИЕ: Замените заглушку токена вашим реальным токеном.
         // Токен должен иметь права на запись (repo scope).
         const GITHUB_TOKEN = "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"; 
         const REPO_OWNER = "He11born"; 
@@ -166,11 +163,7 @@
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
         
-        let db = null; 
-        let auth = null;
-        let userId = 'unknown';
-        let appId;
-        const COLLECTION_NAME = 'students';
+        // Упрощение: Firebase не используется
         let isFirestoreReady = false; 
 
         /**
@@ -214,6 +207,7 @@
                 'success': ['bg-green-100', 'border-green-400', 'text-green-700']
             };
             
+            // Удаление всех возможных классов
             ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700', 'bg-green-100', 'border-green-400', 'text-green-700'].forEach(c => box.classList.remove(c));
             box.classList.add(...(styles[type] || styles['info']));
 
@@ -228,7 +222,8 @@
          */
         function parseCSV(csvText, delimiter) {
             try {
-                let normalizedText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+                // Удаление BOM (Byte Order Mark) если есть
+                let normalizedText = csvText.replace(/^\ufeff/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
                 const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
                 
                 if (lines.length < 2) return [];
@@ -241,7 +236,29 @@
                 };
 
                 return lines.slice(1).map(line => {
-                    const values = line.split(delimiter).map(v => v.trim());
+                    // Используем регулярное выражение для учета кавычек в CSV
+                    const values = [];
+                    let match;
+                    const regex = /(?:^|;)\s*(?:"([^"]*(?:""[^"]*)*)"|([^;]*))/g;
+                    
+                    // Хак для корректного парсинга всех столбцов в строке, включая пустые,
+                    // и обработки кавычек, так как .split(";") некорректно обрабатывает кавычки.
+                    // Если строка начинается с ;, match[1] и match[2] будут undefined, нужно учесть
+                    let lastIndex = 0;
+                    while (match = regex.exec(line)) {
+                        // Если есть текст между разделителем и началом match, это пустой столбец
+                        // Но наш regex должен ловить пустые, если они разделены ';'
+                        // Упрощенный подход: берем то, что в кавычках (match[1]), или без (match[2])
+                        let value = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
+                        if (value !== undefined) {
+                            values.push(value.trim());
+                        } else if (match[0].startsWith(';')) {
+                            // Пустой столбец после разделителя
+                            values.push('');
+                        }
+                        lastIndex = regex.lastIndex;
+                    }
+
                     const student = {};
 
                     headers.forEach((header, index) => {
@@ -315,7 +332,7 @@
                 ].join(CSV_DELIMITER);
                 csvContent += row + '\n';
             });
-            // Добавляем BOM для корректного отображения кириллицы в Excel
+            // Добавляем BOM (\ufeff) для корректного отображения кириллицы в Excel
             return '\ufeff' + csvContent;
         }
 
@@ -357,8 +374,10 @@
             }
 
             // 2. Кодируем новое содержимое в Base64
+            // Используем encodeURIComponent и unescape для корректной работы с кириллицей в Base64
             const newCSVContent = dataToCSV(studentData);
             const base64Content = btoa(unescape(encodeURIComponent(newCSVContent)));
+
 
             // 3. Отправляем PUT-запрос для обновления
             const commitMessage = `Обновление данных о пропусках [${new Date().toLocaleString('ru-RU')}]`;
@@ -401,15 +420,13 @@
             // 1. Сохранение в Local Storage (всегда)
             const localSuccess = saveToLocalStorage(studentData);
             
-            if (isFirestoreReady) {
-                // Логика сохранения в Firestore
-                // ... (Firebase logic omitted for brevity, but it should be here)
-                return localSuccess; // Упрощено: если Local Storage успешен, считаем успешным
-            } else {
-                // 2. Асинхронная синхронизация с GitHub (только если не используется Firebase)
+            // Если Firebase не используется, синхронизируем с GitHub
+            if (!isFirestoreReady) {
                 syncToGitHub(); 
                 return localSuccess;
             }
+            // Firebase logic should be here if configured
+            return localSuccess;
         }
 
         async function handleCellEdit(event) {
@@ -442,7 +459,7 @@
             calculateAndRenderStats();
             renderTable(); // Перерисовка для применения стилей
 
-            // 2. Сохраняем данные (Local Storage + GitHub/Firebase)
+            // 2. Сохраняем данные (Local Storage + GitHub)
             displayMessage('Сохранение в Local Storage и запуск синхронизации с GitHub...', 'info');
             const success = await saveStudentData(docId, key, valueToSave); 
             
@@ -498,6 +515,7 @@
                 const row = document.createElement('tr');
                 
                 let rowClass = isOdd ? 'bg-gray-50' : 'bg-white';
+                // Визуальная индикация по пропускам
                 if (student.absences > 30) {
                     rowClass = 'bg-red-50 hover:bg-red-100 transition duration-150';
                 } else if (student.absences > 15) {
@@ -561,22 +579,14 @@
             }
 
             try {
-                // Инициализация переменных окружения и проверка конфига Firebase (упрощено)
-                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                document.getElementById('app-id').textContent = appId;
-
-                // Мы остаемся в режиме Local Storage + GitHub Sync
-                isFirestoreReady = false;
+                // Инициализация переменных окружения (упрощено, так как Firebase не используется)
+                // App ID и User ID просто скрыты
                 
-                document.getElementById('critical-warning').classList.remove('hidden');
-                document.getElementById('user-id').textContent = 'LOCAL_STORAGE_SYNC';
-                document.getElementById('app-status').innerHTML = 'Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API** (требуется настройка токена).';
-
                 let initialData = loadFromLocalStorage();
                 if (initialData.length === 0) {
                     initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
                     saveToLocalStorage(initialData); 
-                    displayMessage('Данные загружены из CSV и сохранены в Local Storage.', 'warning');
+                    displayMessage('Данные загружены из CSV по умолчанию и сохранены в Local Storage.', 'warning');
                 } else {
                      displayMessage('Данные загружены из Local Storage браузера.', 'info');
                 }
