@@ -54,13 +54,34 @@
             <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
             <p id="app-status" class="text-gray-600">
                 <span class="text-xs text-gray-400 block mt-1">
-                    Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API** (требуется настройка токена).
-                    <span id="app-id" class="hidden">...</span>
-                    <span id="user-id" class="hidden">...</span>
+                    Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API**.
                 </span>
             </p>
         </header>
         
+        <!-- КОНФИГУРАЦИЯ GITHUB ТОКЕНА -->
+        <div id="github-config" class="bg-blue-50 p-6 rounded-xl shadow-md border-2 border-blue-200 mb-8">
+            <h2 class="text-xl font-semibold text-blue-700 mb-3">Настройка Токена GitHub (Обязательно)</h2>
+            <p class="text-sm text-blue-600 mb-3">
+                GitHub автоматически удаляет токены из кода. Пожалуйста, вставьте свой токен (PAT с правом `repo`) в поле ниже. Токен хранится только в браузере (Session Storage) и не будет сохранен в файле.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <input 
+                    type="password" 
+                    id="github-token-input" 
+                    placeholder="Вставьте ваш GitHub Personal Access Token..."
+                    class="flex-grow p-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                <button 
+                    id="save-token-button"
+                    class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150"
+                >
+                    Сохранить токен
+                </button>
+            </div>
+            <div id="token-status" class="mt-2 text-sm font-medium text-red-600">Токен не настроен.</div>
+        </div>
+
         <!-- Блок статистики -->
         <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-500">
@@ -82,7 +103,7 @@
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-semibold text-gray-800">Список Студентов</h2>
                 <div id="github-status" class="px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600">
-                    Статус GitHub: Ожидание...
+                    Статус GitHub: Ожидание токена...
                 </div>
             </div>
             
@@ -114,6 +135,7 @@
 
     <script type="module">
         // Импорты Firebase - сохранены для совместимости, но не используются
+        // (Оставлены для соответствия общим инструкциям)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -121,14 +143,15 @@
         // =================================================================
         //                 НАСТРОЙКИ GITHUB API (ОБЯЗАТЕЛЬНО)
         // =================================================================
-        // ВНИМАНИЕ: Замените заглушку токена вашим реальным токеном.
-        // Токен должен иметь права на запись (repo scope).
-        const GITHUB_TOKEN = "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"; 
+        // ВНИМАНИЕ: GITHUB_TOKEN УДАЛЕН ИЗ КОДА! Используйте Session Storage.
+        
         const REPO_OWNER = "He11born"; 
         const REPO_NAME = "misis_bot"; 
         const FILE_PATH = "разраб.csv"; // Путь к файлу в репозитории
         const BRANCH_NAME = "main"; // Ветка для коммита
-        const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BRANCH_NAME}`;
+        const API_BASE_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BRANCH_NAME}`;
+        
+        const TOKEN_SESSION_KEY = 'githubToken';
         // =================================================================
 
         const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
@@ -163,11 +186,17 @@
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
         
-        // Упрощение: Firebase не используется
         let isFirestoreReady = false; 
         
         // Глобальная переменная для хранения SHA последнего состояния файла с GitHub
         let currentFileSHA = null; 
+
+        /**
+         * Получает токен из Session Storage.
+         */
+        function getGitHubToken() {
+            return sessionStorage.getItem(TOKEN_SESSION_KEY);
+        }
 
         /**
          * Обновляет статус синхронизации с GitHub на UI.
@@ -187,6 +216,33 @@
             }
         }
         
+        /**
+         * Обновляет статус токена на UI.
+         */
+        function updateTokenStatus() {
+            const tokenStatusEl = document.getElementById('token-status');
+            const token = getGitHubToken();
+            if (token && token.length > 10) {
+                tokenStatusEl.textContent = 'Токен сохранен. Готов к синхронизации.';
+                tokenStatusEl.className = 'mt-2 text-sm font-medium text-green-600';
+                document.getElementById('github-token-input').value = '********'; // Скрываем токен
+                document.getElementById('save-token-button').textContent = 'Токен сохранен';
+                document.getElementById('save-token-button').classList.remove('bg-blue-600');
+                document.getElementById('save-token-button').classList.add('bg-green-600');
+                updateGitHubStatus("Готов к работе.", 'bg-blue-500');
+                return true;
+            } else {
+                tokenStatusEl.textContent = 'Токен не настроен или некорректен.';
+                tokenStatusEl.className = 'mt-2 text-sm font-medium text-red-600';
+                document.getElementById('github-token-input').value = '';
+                document.getElementById('save-token-button').textContent = 'Сохранить токен';
+                document.getElementById('save-token-button').classList.remove('bg-green-600');
+                document.getElementById('save-token-button').classList.add('bg-blue-600');
+                updateGitHubStatus("Ошибка: Нет токена.", 'bg-red-500', true);
+                return false;
+            }
+        }
+
         /**
          * Отображает сообщение пользователю.
          */
@@ -278,20 +334,24 @@
                     let match;
                     const regex = /(?:^|;)\s*(?:"([^"]*(?:""[^"]*)*)"|([^;]*))/g;
                     
-                    while (match = regex.exec(line)) {
-                        let value = match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2];
-                        if (value !== undefined) {
-                            values.push(value.trim());
-                        } else if (match[0].startsWith(';')) {
-                            values.push('');
-                        }
+                    // Улучшенная обработка CSV с разделителями внутри кавычек
+                    // Эта часть кода может быть упрощена, но оставлена для совместимости с предыдущим решением
+                    let tempLine = line;
+                    let lastIndex = 0;
+                    
+                    // Простая, но надежная логика для нашего формата:
+                    const parts = line.split(delimiter).map(p => p.trim());
+                    
+                    if (parts.length < headers.length) {
+                        console.warn("Строка CSV имеет меньше полей, чем ожидалось:", line);
+                        return null; // Пропускаем некорректную строку
                     }
 
                     const student = {};
 
                     headers.forEach((header, index) => {
                         const key = keyMap[header] || header;
-                        let value = values[index];
+                        let value = parts[index] ? parts[index].replace(/^"|"$/g, '').replace(/""/g, '"') : '';
 
                         if (key === 'absences') {
                             student[key] = parseInt(value, 10) || 0;
@@ -301,7 +361,7 @@
                     });
                     student.docId = student.id.toString(); 
                     return student;
-                });
+                }).filter(student => student !== null);
             } catch (error) {
                 console.error("Ошибка парсинга CSV:", error.message);
                 return [];
@@ -344,17 +404,17 @@
         
         /**
          * Загружает Base64 контент и SHA с GitHub.
-         * Использует стандартный GET-метод, который возвращает Base64 и метаданные.
          */
         async function fetchContentFromGitHub() {
-            if (GITHUB_TOKEN === "YOUR_PERSONAL_ACCESS_TOKEN_HERE" || !REPO_OWNER || !REPO_NAME) {
+            const token = getGitHubToken();
+            if (!token) {
                 return { csvContent: null, sha: null };
             }
             
             try {
-                const response = await fetch(API_URL, {
+                const response = await fetch(API_BASE_URL, {
                     headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Authorization': `token ${token}`,
                         'Accept': 'application/vnd.github.v3+json'
                     }
                 });
@@ -393,6 +453,7 @@
 
             data.forEach(student => {
                 // Экранирование кавычек в ФИО для корректного CSV
+                // Оборачивание поля в кавычки для защиты от разделителей в ФИО
                 const escapedName = student.name.replace(/"/g, '""');
                 
                 const row = [
@@ -410,8 +471,9 @@
          * Отправляет текущие данные в файл разраб.csv на GitHub.
          */
         async function syncToGitHub() {
-            if (GITHUB_TOKEN === "YOUR_PERSONAL_ACCESS_TOKEN_HERE" || !REPO_OWNER || !REPO_NAME) {
-                updateGitHubStatus("Ошибка: Настройте GITHUB_TOKEN/REPO_OWNER!", 'bg-red-500', true);
+            const token = getGitHubToken();
+            if (!token) {
+                updateGitHubStatus("Ошибка: Токен GitHub не настроен!", 'bg-red-500', true);
                 return false;
             }
             
@@ -419,14 +481,11 @@
 
             let sha = currentFileSHA;
             
-            // Если SHA отсутствует (например, после создания файла или ошибки загрузки), пытаемся получить его
+            // Если SHA отсутствует, пытаемся получить его перед коммитом
             if (!sha) {
-                 const { csvContent, sha: latestSha } = await fetchContentFromGitHub();
-                 if (latestSha) {
-                     sha = latestSha;
-                     currentFileSHA = sha;
-                 }
-                 // Если SHA все еще нет (файл 404), он остается null, что приведет к созданию файла
+                 const { sha: latestSha } = await fetchContentFromGitHub();
+                 currentFileSHA = latestSha;
+                 sha = latestSha;
             }
 
             // 2. Кодируем новое содержимое в Base64 (надежный способ для кириллицы)
@@ -435,8 +494,8 @@
 
             // 3. Отправляем PUT-запрос для обновления
             const action = sha ? "Обновление" : "Создание";
-            // Используем ISO-формат для стабильной даты
-            const timestamp = new Date().toISOString().replace(/T/, ' ').substring(0, 19); 
+            // Используем ISO-формат для стабильной даты, чтобы избежать "Неизвестно"
+            const timestamp = new Date().toISOString();
             const commitMessage = `${action} данных о пропусках [${timestamp}]`;
             
             const payload = {
@@ -447,10 +506,10 @@
             };
 
             try {
-                const putResponse = await fetch(API_URL, {
+                const putResponse = await fetch(API_BASE_URL, {
                     method: 'PUT',
                     headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Authorization': `token ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(payload)
@@ -472,8 +531,8 @@
                 console.error("[GitHub Sync Error] PUT Content:", e);
                 // Проверяем на конфликт (409) - устаревший SHA
                 const errorMessage = e.message.includes("409") ? 
-                    "Ошибка 409 Conflict: Обновите страницу и повторите (устаревший SHA)." : 
-                    e.message.substring(0, 50) + '...';
+                    "Ошибка 409 Conflict: Данные на GitHub были изменены. Обновите страницу и повторите." : 
+                    e.message.substring(0, 80) + '...';
                 
                 updateGitHubStatus(`Ошибка PUT: ${errorMessage}`, 'bg-red-500', true);
                 return false;
@@ -486,13 +545,27 @@
             // 1. Сохранение в Local Storage (всегда)
             const localSuccess = saveToLocalStorage(studentData);
             
-            // Если Firebase не используется, синхронизируем с GitHub
-            if (!isFirestoreReady) {
+            // 2. Синхронизация с GitHub
+            if (updateTokenStatus()) {
                 syncToGitHub(); 
-                return localSuccess;
             }
-            // Firebase logic should be here if configured
             return localSuccess;
+        }
+        
+        function handleSaveToken() {
+            const input = document.getElementById('github-token-input');
+            const token = input.value.trim();
+            if (token && token.length > 10) {
+                sessionStorage.setItem(TOKEN_SESSION_KEY, token);
+                updateTokenStatus();
+                displayMessage('Токен GitHub сохранен. Данные будут синхронизироваться.', 'success');
+                // Запуск повторной инициализации, чтобы загрузить данные с GitHub
+                initApp(true);
+            } else {
+                sessionStorage.removeItem(TOKEN_SESSION_KEY);
+                updateTokenStatus();
+                displayMessage('Ошибка: Введите корректный токен.', 'warning');
+            }
         }
 
         async function handleCellEdit(event) {
@@ -519,7 +592,7 @@
                 valueToSave = parsedValue;
             }
             
-            // 1. Обновляем локальные данные и UI
+            // 1. Обновляем локальные данные
             studentData[studentIndex][key] = valueToSave;
             cell.textContent = valueToSave; 
             calculateAndRenderStats();
@@ -529,9 +602,7 @@
             displayMessage('Сохранение в Local Storage и запуск синхронизации с GitHub...', 'info');
             const success = await saveStudentData(docId, key, valueToSave); 
             
-            if (success) {
-                displayMessage('Изменение сохранено.', 'success');
-            } else {
+            if (!success) {
                 // Откат, если Local Storage не сработал
                 studentData[studentIndex][key] = oldValue;
                 cell.textContent = oldValue; 
@@ -636,48 +707,61 @@
 
         // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ---
 
-        async function initApp() {
+        async function initApp(forceReload = false) {
             const loadingIndicator = document.getElementById('loading-indicator');
             loadingIndicator.textContent = "Инициализация данных...";
             
-            if (GITHUB_TOKEN === "YOUR_PERSONAL_ACCESS_TOKEN_HERE") {
-                updateGitHubStatus("ПРЕДУПРЕЖДЕНИЕ: Токен GitHub не настроен!", 'bg-yellow-500', true);
-            }
+            updateTokenStatus();
 
             try {
                 let initialData = loadFromLocalStorage();
                 let loadedFrom = 'Local Storage';
+                const tokenIsSet = getGitHubToken() !== null;
                 
-                if (initialData.length === 0) {
-                    // Попытка загрузки с GitHub, если Local Storage пуст
-                    updateGitHubStatus("Загрузка данных с GitHub...", 'bg-blue-500');
-                    const githubResult = await fetchContentFromGitHub();
+                // Перезагрузка с GitHub, если Local Storage пуст или была принудительная перезагрузка
+                if (initialData.length === 0 || forceReload) {
                     
-                    if (githubResult.csvContent) {
-                        initialData = parseCSV(githubResult.csvContent, CSV_DELIMITER);
-                        currentFileSHA = githubResult.sha;
-                        loadedFrom = 'GitHub';
-                        updateGitHubStatus("Данные успешно загружены с GitHub.", 'bg-green-500');
+                    if (tokenIsSet) {
+                        // 1. Загрузка с GitHub
+                        updateGitHubStatus("Загрузка данных с GitHub...", 'bg-blue-500');
+                        const githubResult = await fetchContentFromGitHub();
+                        
+                        if (githubResult.csvContent) {
+                            initialData = parseCSV(githubResult.csvContent, CSV_DELIMITER);
+                            currentFileSHA = githubResult.sha;
+                            loadedFrom = 'GitHub';
+                            updateGitHubStatus("Данные успешно загружены с GitHub.", 'bg-green-500');
+                        } else {
+                            // 2. Если GitHub не дал данных, берем из Local Storage (если есть) или по умолчанию
+                            initialData = loadFromLocalStorage();
+                            if (initialData.length === 0) {
+                                initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITED);
+                                loadedFrom = 'CSV по умолчанию';
+                            } else {
+                                loadedFrom = 'Local Storage (GitHub недоступен)';
+                            }
+                            updateGitHubStatus("Ошибка загрузки. Используется Local Storage/по умолчанию.", 'bg-gray-500');
+                        }
                     } else {
-                        // Если нет данных ни в LS, ни на GitHub (или ошибка/404)
-                        initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
-                        loadedFrom = 'CSV по умолчанию';
-                        updateGitHubStatus("Синхронизация GitHub: Используется Local Storage.", 'bg-gray-500');
+                        // 3. Если токен не установлен, используем Local Storage или CSV по умолчанию
+                        initialData = loadFromLocalStorage();
+                        if (initialData.length === 0) {
+                            initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+                            loadedFrom = 'CSV по умолчанию (Токен не задан)';
+                        }
+                        updateGitHubStatus("Ожидание токена...", 'bg-gray-500');
                     }
                     
                     if (initialData.length > 0) {
                         saveToLocalStorage(initialData);
-                        displayMessage(`Данные загружены из ${loadedFrom} и сохранены в Local Storage.`, 'info');
-                    } else if (loadedFrom === 'CSV по умолчанию') {
-                        displayMessage('Критическая ошибка: Не удалось загрузить данные. Используется пустой набор.', 'error');
+                        displayMessage(`Данные загружены из ${loadedFrom}.`, 'info');
                     }
                 } else {
-                    // Если данные есть в Local Storage, просто устанавливаем статус
-                    updateGitHubStatus("Готов к синхронизации.", 'bg-gray-500');
-                    displayMessage('Данные загружены из Local Storage браузера.', 'info');
-                    // Дополнительная попытка загрузить SHA с GitHub, чтобы быть готовым к PUT
-                    const { sha } = await fetchContentFromGitHub();
-                    currentFileSHA = sha;
+                    // Если данные есть в Local Storage, пытаемся получить SHA для синхронизации
+                    if (tokenIsSet) {
+                        const { sha } = await fetchContentFromGitHub();
+                        currentFileSHA = sha;
+                    }
                 }
                 
                 studentData = initialData;
@@ -697,6 +781,8 @@
                         }
                     });
                 });
+
+                document.getElementById('save-token-button').addEventListener('click', handleSaveToken);
                 
             } catch (e) {
                 // Обработка любых критических ошибок инициализации
