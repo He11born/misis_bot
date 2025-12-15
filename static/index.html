@@ -54,7 +54,7 @@
             <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
             <p id="app-status" class="text-gray-600">
                 <span class="text-xs text-gray-400 block mt-1">
-                    Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API**.
+                    Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API** только по нажатию кнопки.
                 </span>
             </p>
         </header>
@@ -126,6 +126,17 @@
             </table>
         </div>
 
+        <!-- КНОПКА МАНУАЛЬНОЙ СИНХРОНИЗАЦИИ -->
+        <div class="mt-8 text-center">
+            <button 
+                id="sync-db-button"
+                class="px-8 py-4 w-full md:w-auto text-lg font-bold text-white rounded-xl transition duration-300 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+            >
+                Нет несохраненных изменений
+            </button>
+        </div>
+
         <!-- Контейнер для сообщений об ошибках -->
         <div id="message-box" class="mt-4 p-4 hidden bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg" role="alert">
             <!-- Сообщения будут добавлены JavaScript -->
@@ -135,7 +146,6 @@
 
     <script type="module">
         // Импорты Firebase - сохранены для совместимости, но не используются
-        // (Оставлены для соответствия общим инструкциям)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -143,7 +153,6 @@
         // =================================================================
         //                 НАСТРОЙКИ GITHUB API (ОБЯЗАТЕЛЬНО)
         // =================================================================
-        // ВНИМАНИЕ: GITHUB_TOKEN УДАЛЕН ИЗ КОДА! Используйте Session Storage.
         
         const REPO_OWNER = "He11born"; 
         const REPO_NAME = "misis_bot"; 
@@ -190,6 +199,27 @@
         
         // Глобальная переменная для хранения SHA последнего состояния файла с GitHub
         let currentFileSHA = null; 
+        
+        // Статус наличия несохраненных изменений
+        let hasUnsyncedChanges = false;
+
+        /**
+         * Устанавливает статус несохраненных изменений и обновляет кнопку синхронизации.
+         */
+        function setUnsyncedStatus(status) {
+            hasUnsyncedChanges = status;
+            const button = document.getElementById('sync-db-button');
+            if (status) {
+                button.classList.remove('bg-green-600', 'bg-blue-600', 'cursor-not-allowed');
+                button.classList.add('bg-red-600', 'hover:bg-red-700');
+                button.textContent = 'Отправить изменения в базу данных (есть локальные изменения)';
+            } else {
+                button.classList.remove('bg-red-600', 'hover:bg-red-700');
+                button.classList.add('bg-green-600', 'cursor-not-allowed');
+                button.textContent = 'Нет несохраненных изменений';
+            }
+            button.disabled = !status || !getGitHubToken();
+        }
 
         /**
          * Получает токен из Session Storage.
@@ -206,8 +236,8 @@
             statusElement.textContent = `Статус GitHub: ${message}`;
             statusElement.className = `px-4 py-2 text-sm rounded-lg text-white font-semibold ${isError ? 'bg-red-500' : colorClass}`;
             
-            // Сброс класса через 5 секунд, если это не ошибка
-            if (!isError) {
+            // Сброс класса через 5 секунд, если это не ошибка и нет несохраненных изменений
+            if (!isError && !hasUnsyncedChanges) {
                 clearTimeout(statusElement.timer);
                 statusElement.timer = setTimeout(() => {
                     statusElement.className = 'px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600';
@@ -222,7 +252,9 @@
         function updateTokenStatus() {
             const tokenStatusEl = document.getElementById('token-status');
             const token = getGitHubToken();
-            if (token && token.length > 10) {
+            const isTokenSet = token && token.length > 10;
+
+            if (isTokenSet) {
                 tokenStatusEl.textContent = 'Токен сохранен. Готов к синхронизации.';
                 tokenStatusEl.className = 'mt-2 text-sm font-medium text-green-600';
                 document.getElementById('github-token-input').value = '********'; // Скрываем токен
@@ -230,7 +262,6 @@
                 document.getElementById('save-token-button').classList.remove('bg-blue-600');
                 document.getElementById('save-token-button').classList.add('bg-green-600');
                 updateGitHubStatus("Готов к работе.", 'bg-blue-500');
-                return true;
             } else {
                 tokenStatusEl.textContent = 'Токен не настроен или некорректен.';
                 tokenStatusEl.className = 'mt-2 text-sm font-medium text-red-600';
@@ -239,8 +270,9 @@
                 document.getElementById('save-token-button').classList.remove('bg-green-600');
                 document.getElementById('save-token-button').classList.add('bg-blue-600');
                 updateGitHubStatus("Ошибка: Нет токена.", 'bg-red-500', true);
-                return false;
             }
+            setUnsyncedStatus(hasUnsyncedChanges); // Обновляем состояние кнопки синхронизации в зависимости от токена
+            return isTokenSet;
         }
 
         /**
@@ -286,7 +318,6 @@
         /** Декодирует Base64 в строку UTF-8 (для кириллицы). */
         function base64ToUtf8(base64) {
             try {
-                // Убираем возможные пробелы/переносы строк
                 const binaryString = atob(base64.replace(/\s/g, ''));
                 const bytes = new Uint8Array(binaryString.length);
                 for (let i = 0; i < binaryString.length; i++) {
@@ -330,27 +361,19 @@
                 };
 
                 return lines.slice(1).map(line => {
-                    const values = [];
-                    let match;
-                    const regex = /(?:^|;)\s*(?:"([^"]*(?:""[^"]*)*)"|([^;]*))/g;
-                    
-                    // Улучшенная обработка CSV с разделителями внутри кавычек
-                    // Эта часть кода может быть упрощена, но оставлена для совместимости с предыдущим решением
-                    let tempLine = line;
-                    let lastIndex = 0;
-                    
                     // Простая, но надежная логика для нашего формата:
                     const parts = line.split(delimiter).map(p => p.trim());
                     
                     if (parts.length < headers.length) {
                         console.warn("Строка CSV имеет меньше полей, чем ожидалось:", line);
-                        return null; // Пропускаем некорректную строку
+                        return null; 
                     }
 
                     const student = {};
 
                     headers.forEach((header, index) => {
                         const key = keyMap[header] || header;
+                        // Удаление кавычек вокруг значения
                         let value = parts[index] ? parts[index].replace(/^"|"$/g, '').replace(/""/g, '"') : '';
 
                         if (key === 'absences') {
@@ -472,11 +495,16 @@
          */
         async function syncToGitHub() {
             const token = getGitHubToken();
+            const syncButton = document.getElementById('sync-db-button');
+
             if (!token) {
                 updateGitHubStatus("Ошибка: Токен GitHub не настроен!", 'bg-red-500', true);
                 return false;
             }
             
+            // 1. Блокируем кнопку и показываем статус
+            syncButton.disabled = true;
+            syncButton.textContent = 'Отправка изменений...';
             updateGitHubStatus("Отправка изменений...", 'bg-yellow-500');
 
             let sha = currentFileSHA;
@@ -488,20 +516,19 @@
                  sha = latestSha;
             }
 
-            // 2. Кодируем новое содержимое в Base64 (надежный способ для кириллицы)
+            // 2. Кодируем новое содержимое в Base64
             const newCSVContent = dataToCSV(studentData);
             const base64Content = utf8ToBase64(newCSVContent);
 
             // 3. Отправляем PUT-запрос для обновления
             const action = sha ? "Обновление" : "Создание";
-            // Используем ISO-формат для стабильной даты, чтобы избежать "Неизвестно"
             const timestamp = new Date().toISOString();
             const commitMessage = `${action} данных о пропусках [${timestamp}]`;
             
             const payload = {
                 message: commitMessage,
                 content: base64Content,
-                sha: sha, // SHA обязателен для обновления, опционален для создания (null)
+                sha: sha, 
                 branch: BRANCH_NAME
             };
 
@@ -521,33 +548,40 @@
                 }
                 
                 const resultData = await putResponse.json();
-                // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Обновляем SHA после успешного коммита
+                // Обновляем SHA после успешного коммита
                 currentFileSHA = resultData.content.sha; 
 
                 updateGitHubStatus("Успешно синхронизировано!", 'bg-green-500');
+                setUnsyncedStatus(false); // Сбрасываем статус несохраненных изменений
                 return true;
 
             } catch (e) {
                 console.error("[GitHub Sync Error] PUT Content:", e);
-                // Проверяем на конфликт (409) - устаревший SHA
+                
                 const errorMessage = e.message.includes("409") ? 
                     "Ошибка 409 Conflict: Данные на GitHub были изменены. Обновите страницу и повторите." : 
                     e.message.substring(0, 80) + '...';
                 
                 updateGitHubStatus(`Ошибка PUT: ${errorMessage}`, 'bg-red-500', true);
+                syncButton.disabled = false; // Разблокируем кнопку, чтобы можно было попробовать снова
+                syncButton.textContent = 'Ошибка синхронизации! Повторить?';
+                syncButton.classList.remove('bg-yellow-500');
+                syncButton.classList.add('bg-red-600');
+                
                 return false;
             }
         }
         
         // --- Core Logic Functions ---
 
+        /**
+         * Сохраняет данные только в Local Storage и помечает изменения как несохраненные.
+         */
         async function saveStudentData(docId, key, value) {
-            // 1. Сохранение в Local Storage (всегда)
+            // Сохранение в Local Storage (только)
             const localSuccess = saveToLocalStorage(studentData);
-            
-            // 2. Синхронизация с GitHub
-            if (updateTokenStatus()) {
-                syncToGitHub(); 
+            if (localSuccess) {
+                setUnsyncedStatus(true); // Устанавливаем статус, что есть изменения
             }
             return localSuccess;
         }
@@ -558,15 +592,27 @@
             if (token && token.length > 10) {
                 sessionStorage.setItem(TOKEN_SESSION_KEY, token);
                 updateTokenStatus();
-                displayMessage('Токен GitHub сохранен. Данные будут синхронизироваться.', 'success');
+                displayMessage('Токен GitHub сохранен. Данные будут синхронизироваться по нажатию кнопки.', 'success');
                 // Запуск повторной инициализации, чтобы загрузить данные с GitHub
-                initApp(true);
+                initApp(true); 
             } else {
                 sessionStorage.removeItem(TOKEN_SESSION_KEY);
                 updateTokenStatus();
                 displayMessage('Ошибка: Введите корректный токен.', 'warning');
             }
         }
+        
+        /**
+         * Обработчик ручной синхронизации.
+         */
+        async function handleManualSync() {
+            if (hasUnsyncedChanges) {
+                await syncToGitHub();
+            } else {
+                displayMessage('Нет изменений для отправки.', 'warning');
+            }
+        }
+
 
         async function handleCellEdit(event) {
             const cell = event.target;
@@ -598,8 +644,8 @@
             calculateAndRenderStats();
             renderTable(); // Перерисовка для применения стилей
 
-            // 2. Сохраняем данные (Local Storage + GitHub)
-            displayMessage('Сохранение в Local Storage и запуск синхронизации с GitHub...', 'info');
+            // 2. Сохраняем данные (Local Storage ONLY)
+            displayMessage('Изменение сохранено локально. Нажмите кнопку "Отправить" для синхронизации с GitHub.', 'info');
             const success = await saveStudentData(docId, key, valueToSave); 
             
             if (!success) {
@@ -608,6 +654,7 @@
                 cell.textContent = oldValue; 
                 calculateAndRenderStats(); 
                 displayMessage('Ошибка сохранения! Изменение отменено.', 'error');
+                setUnsyncedStatus(false); // Если не удалось сохранить даже локально
             }
         }
         
@@ -735,7 +782,7 @@
                             // 2. Если GitHub не дал данных, берем из Local Storage (если есть) или по умолчанию
                             initialData = loadFromLocalStorage();
                             if (initialData.length === 0) {
-                                initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITED);
+                                initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
                                 loadedFrom = 'CSV по умолчанию';
                             } else {
                                 loadedFrom = 'Local Storage (GitHub недоступен)';
@@ -768,6 +815,7 @@
                 
                 calculateAndRenderStats();
                 sortData(currentSort.key);
+                setUnsyncedStatus(false); // Изначально изменения отсутствуют
                 
                 document.getElementById('loading-indicator').classList.add('hidden');
                 document.getElementById('student-table').classList.remove('hidden');
@@ -783,6 +831,7 @@
                 });
 
                 document.getElementById('save-token-button').addEventListener('click', handleSaveToken);
+                document.getElementById('sync-db-button').addEventListener('click', handleManualSync);
                 
             } catch (e) {
                 // Обработка любых критических ошибок инициализации
