@@ -343,8 +343,8 @@
         // --- GitHub API Functions ---
         
         /**
-         * Загружает и декодирует CSV-файл с GitHub.
-         * @returns {Promise<{csvContent: string | null, sha: string | null}>}
+         * Загружает Base64 контент и SHA с GitHub.
+         * Использует стандартный GET-метод, который возвращает Base64 и метаданные.
          */
         async function fetchContentFromGitHub() {
             if (GITHUB_TOKEN === "YOUR_PERSONAL_ACCESS_TOKEN_HERE" || !REPO_OWNER || !REPO_NAME) {
@@ -355,7 +355,7 @@
                 const response = await fetch(API_URL, {
                     headers: {
                         'Authorization': `token ${GITHUB_TOKEN}`,
-                        'Accept': 'application/vnd.github.v3.raw+json' // Принимаем raw+json для лучшей обработки контента
+                        'Accept': 'application/vnd.github.v3+json'
                     }
                 });
 
@@ -369,20 +369,13 @@
                     throw new Error(`GET failed: ${response.status} - ${errorData.message}`);
                 }
                 
-                // Для получения SHA, нам нужен не raw, а стандартный JSON-ответ.
-                // Выполним второй запрос, чтобы получить SHA
-                const shaResponse = await fetch(API_URL, {
-                    headers: {
-                        'Authorization': `token ${GITHUB_TOKEN}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                });
-                const shaData = await shaResponse.json();
+                const fileData = await response.json();
                 
-                // Содержимое файла (text) из первого ответа
-                const csvContent = await response.text(); 
+                // Декодируем Base64-контент, полученный от GitHub
+                const csvContent = base64ToUtf8(fileData.content); 
+                const sha = fileData.sha;
                 
-                return { csvContent: csvContent, sha: shaData.sha };
+                return { csvContent: csvContent, sha: sha };
 
             } catch (e) {
                 console.error("[GitHub Fetch Error]:", e);
@@ -424,36 +417,17 @@
             
             updateGitHubStatus("Отправка изменений...", 'bg-yellow-500');
 
-            // Используем SHA, полученный при последней загрузке
             let sha = currentFileSHA;
             
-            // Если SHA нет (например, файл не существовал), попробуем получить его, чтобы не перезаписать чужие изменения
+            // Если SHA отсутствует (например, после создания файла или ошибки загрузки), пытаемся получить его
             if (!sha) {
-                // Выполняем GET-запрос для получения SHA перед PUT
-                try {
-                    const response = await fetch(API_URL, {
-                        headers: {
-                            'Authorization': `token ${GITHUB_TOKEN}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    });
-                    if (response.status === 200) {
-                        const fileData = await response.json();
-                        sha = fileData.sha;
-                        currentFileSHA = sha; // Обновляем глобальный SHA
-                    } else if (response.status === 404) {
-                        sha = null; // Файл будет создан
-                    } else {
-                        const errorData = await response.json();
-                        throw new Error(`GET SHA failed: ${response.status} - ${errorData.message}`);
-                    }
-                } catch (e) {
-                    console.error("[GitHub Sync Error] GET SHA:", e);
-                    updateGitHubStatus(`Ошибка GET (SHA): ${e.message.substring(0, 50)}...`, 'bg-red-500', true);
-                    return false;
-                }
+                 const { csvContent, sha: latestSha } = await fetchContentFromGitHub();
+                 if (latestSha) {
+                     sha = latestSha;
+                     currentFileSHA = sha;
+                 }
+                 // Если SHA все еще нет (файл 404), он остается null, что приведет к созданию файла
             }
-
 
             // 2. Кодируем новое содержимое в Base64 (надежный способ для кириллицы)
             const newCSVContent = dataToCSV(studentData);
@@ -461,12 +435,14 @@
 
             // 3. Отправляем PUT-запрос для обновления
             const action = sha ? "Обновление" : "Создание";
-            const commitMessage = `${action} данных о пропусках [${new Date().toLocaleString('ru-RU')}]`;
+            // Используем ISO-формат для стабильной даты
+            const timestamp = new Date().toISOString().replace(/T/, ' ').substring(0, 19); 
+            const commitMessage = `${action} данных о пропусках [${timestamp}]`;
             
             const payload = {
                 message: commitMessage,
                 content: base64Content,
-                sha: sha, // SHA обязателен для обновления, опционален для создания
+                sha: sha, // SHA обязателен для обновления, опционален для создания (null)
                 branch: BRANCH_NAME
             };
 
@@ -486,14 +462,20 @@
                 }
                 
                 const resultData = await putResponse.json();
-                currentFileSHA = resultData.content.sha; // Обновляем SHA после успешного коммита
+                // КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Обновляем SHA после успешного коммита
+                currentFileSHA = resultData.content.sha; 
 
                 updateGitHubStatus("Успешно синхронизировано!", 'bg-green-500');
                 return true;
 
             } catch (e) {
                 console.error("[GitHub Sync Error] PUT Content:", e);
-                updateGitHubStatus(`Ошибка PUT: ${e.message.substring(0, 50)}...`, 'bg-red-500', true);
+                // Проверяем на конфликт (409) - устаревший SHA
+                const errorMessage = e.message.includes("409") ? 
+                    "Ошибка 409 Conflict: Обновите страницу и повторите (устаревший SHA)." : 
+                    e.message.substring(0, 50) + '...';
+                
+                updateGitHubStatus(`Ошибка PUT: ${errorMessage}`, 'bg-red-500', true);
                 return false;
             }
         }
@@ -693,6 +675,9 @@
                     // Если данные есть в Local Storage, просто устанавливаем статус
                     updateGitHubStatus("Готов к синхронизации.", 'bg-gray-500');
                     displayMessage('Данные загружены из Local Storage браузера.', 'info');
+                    // Дополнительная попытка загрузить SHA с GitHub, чтобы быть готовым к PUT
+                    const { sha } = await fetchContentFromGitHub();
+                    currentFileSHA = sha;
                 }
                 
                 studentData = initialData;
