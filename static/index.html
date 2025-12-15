@@ -1,23 +1,28 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" class="transition-colors duration-300">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анализ Пропусков Студентов (СИНХРОНИЗАЦИЯ С GITHUB)</title>
+    <title>Анализ Пропусков Студентов (Градиентный Фон)</title>
     <!-- Подключение Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f7f9fb;
+            /* Настройки для плавного градиента */
+            transition: background-color 0.3s;
         }
+
+        /* Дополнительные стили для градиента тела, который не всегда легко настроить через Tailwind для body */
+        /* Tailwind классы будут применены в самом <body> теге */
+
         /* Стили для заголовков таблицы с возможностью сортировки */
         th {
             cursor: pointer;
             user-select: none;
             position: relative;
-            padding-right: 2rem !important;
+            padding-right: 2.5rem !important; /* Увеличим отступ для иконок */
         }
         th::after {
             content: ' ';
@@ -25,7 +30,8 @@
             right: 0.75rem;
             top: 50%;
             transform: translateY(-50%);
-            opacity: 0.3;
+            opacity: 0.4;
+            transition: opacity 0.3s;
         }
         th.sort-none::after { content: "↕"; }
         th.sort-asc::after { content: "▲"; opacity: 1; }
@@ -33,7 +39,7 @@
         
         /* Стиль для редактируемых ячеек */
         [contenteditable="true"]:focus {
-            outline: 2px solid #3b82f6;
+            outline: 2px solid #0090ff; /* Более яркий фокус */
             border-radius: 0.25rem;
             padding: 3px;
         }
@@ -47,80 +53,96 @@
         }
     </style>
 </head>
-<body class="p-4 md:p-8">
+<!-- Применяем градиент к телу: от светло-голубого к светло-серому. Для темной темы - от темно-серого к темно-синему. -->
+<body class="p-4 md:p-8 transition-colors duration-300 bg-gradient-to-br from-sky-50 to-gray-100 dark:from-gray-900 dark:to-slate-950 min-h-screen">
 
     <div class="container-fluid mx-auto">
-        <header class="mb-8 p-4 bg-white shadow-lg rounded-xl">
-            <h1 class="text-3xl font-extrabold text-gray-800 mb-2">Анализ Пропусков Студентов</h1>
-            <p id="app-status" class="text-gray-600">
-                <span class="text-xs text-gray-400 block mt-1">
-                    Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API** только по нажатию кнопки.
-                </span>
-            </p>
+        
+        <!-- HEADER и ПЕРЕКЛЮЧАТЕЛЬ ТЕМЫ -->
+        <header class="mb-8 p-4 bg-white dark:bg-gray-800 shadow-xl rounded-xl transition-colors duration-300 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mb-2">Анализ Пропусков Студентов</h1>
+                <p id="app-status" class="text-gray-600 dark:text-gray-400">
+                    <span class="text-xs block mt-1">
+                        Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API**.
+                    </span>
+                </p>
+            </div>
+            
+            <button id="theme-toggle" class="p-3 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition duration-150 shadow-md">
+                <!-- Иконка будет обновлена JavaScript -->
+                <svg id="theme-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Иконка по умолчанию (Солнце) -->
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                </svg>
+            </button>
         </header>
         
-        <!-- КОНФИГУРАЦИЯ GITHUB ТОКЕНА -->
-        <div id="github-config" class="bg-blue-50 p-6 rounded-xl shadow-md border-2 border-blue-200 mb-8">
-            <h2 class="text-xl font-semibold text-blue-700 mb-3">Настройка Токена GitHub (Обязательно)</h2>
-            <p class="text-sm text-blue-600 mb-3">
-                GitHub автоматически удаляет токены из кода. Пожалуйста, вставьте свой токен (PAT с правом `repo`) в поле ниже. Токен хранится только в браузере (Session Storage) и не будет сохранен в файле.
+        <!-- КОНФИГУРАЦИЯ GITHUB ТОКЕНА (White/Gray-800) -->
+        <div id="github-config" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-2 border-sky-300 dark:border-sky-700 mb-8 transition-colors duration-300">
+            <h2 class="text-xl font-semibold text-sky-700 dark:text-sky-300 mb-3">Настройка Токена GitHub (Обязательно)</h2>
+            <p class="text-sm text-sky-600 dark:text-sky-400 mb-3">
+                Пожалуйста, вставьте свой токен (PAT с правом `repo`) в поле ниже. Токен хранится только в браузере (Session Storage).
             </p>
             <div class="flex flex-col sm:flex-row gap-3">
                 <input 
                     type="password" 
                     id="github-token-input" 
                     placeholder="Вставьте ваш GitHub Personal Access Token..."
-                    class="flex-grow p-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    class="flex-grow p-2 border border-sky-300 dark:border-sky-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-sky-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
                 >
                 <button 
                     id="save-token-button"
-                    class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150"
+                    class="px-4 py-2 bg-sky-600 dark:bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-700 dark:hover:bg-sky-400 transition duration-150 shadow-md"
                 >
                     Сохранить токен
                 </button>
             </div>
-            <div id="token-status" class="mt-2 text-sm font-medium text-red-600">Токен не настроен.</div>
+            <div id="token-status" class="mt-2 text-sm font-medium text-red-600 dark:text-red-400">Токен не настроен.</div>
         </div>
 
         <!-- Блок статистики -->
         <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-500">
-                <p class="text-sm font-medium text-gray-500">Всего студентов</p>
-                <p id="total-students" class="text-3xl font-bold text-gray-900 mt-1">0</p>
+            <!-- Всего студентов -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-sky-500 transition-colors duration-300">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Всего студентов</p>
+                <p id="total-students" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0</p>
             </div>
-            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-red-500">
-                <p class="text-sm font-medium text-gray-500">Суммарное количество пропусков</p>
-                <p id="total-absences" class="text-3xl font-bold text-gray-900 mt-1">0</p>
+            <!-- Суммарное количество пропусков -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-red-500 transition-colors duration-300">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Суммарное количество пропусков</p>
+                <p id="total-absences" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0</p>
             </div>
-            <div class="bg-white p-6 rounded-xl shadow-md border-t-4 border-green-500">
-                <p class="text-sm font-medium text-gray-500">Среднее количество пропусков</p>
-                <p id="avg-absences" class="text-3xl font-bold text-gray-900 mt-1">0.00</p>
+            <!-- Среднее количество пропусков -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-green-500 transition-colors duration-300">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Среднее количество пропусков</p>
+                <p id="avg-absences" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0.00</p>
             </div>
         </div>
 
         <!-- Контейнер таблицы -->
-        <div class="bg-white p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto">
+        <div class="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto transition-colors duration-300">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-semibold text-gray-800">Список Студентов</h2>
-                <div id="github-status" class="px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600">
+                <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Список Студентов</h2>
+                <div id="github-status" class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
                     Статус GitHub: Ожидание токена...
                 </div>
             </div>
             
             <!-- Индикатор загрузки -->
-            <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-blue-600">
+            <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-sky-600 dark:text-sky-400">
                 Инициализация данных...
             </div>
             
-            <table id="student-table" class="min-w-full divide-y divide-gray-200 hidden">
-                <thead class="bg-gray-50">
+            <table id="student-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 hidden">
+                <thead class="bg-gray-50 dark:bg-gray-700">
                     <tr>
-                        <th data-key="id" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tl-xl">ID номер</th>
-                        <th data-key="name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none">ФИО (Редакт.)</th>
-                        <th data-key="absences" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sort-none rounded-tr-xl">Количество пропусков (Редакт.)</th>
+                        <th data-key="id" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sort-none rounded-tl-xl">ID номер</th>
+                        <th data-key="name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sort-none">ФИО (Редакт.)</th>
+                        <th data-key="absences" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sort-none rounded-tr-xl">Количество пропусков (Редакт.)</th>
                     </tr>
                 </thead>
-                <tbody id="table-body" class="bg-white divide-y divide-gray-200">
+                <tbody id="table-body" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     <!-- Строки будут добавлены JavaScript -->
                 </tbody>
             </table>
@@ -130,7 +152,7 @@
         <div class="mt-8 text-center">
             <button 
                 id="sync-db-button"
-                class="px-8 py-4 w-full md:w-auto text-lg font-bold text-white rounded-xl transition duration-300 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                class="px-8 py-4 w-full md:w-auto text-lg font-bold text-white rounded-xl transition duration-300 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-green-600"
                 disabled
             >
                 Нет несохраненных изменений
@@ -138,29 +160,25 @@
         </div>
 
         <!-- Контейнер для сообщений об ошибках -->
-        <div id="message-box" class="mt-4 p-4 hidden bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg" role="alert">
+        <div id="message-box" class="mt-4 p-4 hidden rounded-lg" role="alert">
             <!-- Сообщения будут добавлены JavaScript -->
         </div>
 
     </div>
 
     <script type="module">
-        // Импорты Firebase - сохранены для совместимости, но не используются
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
         // =================================================================
         //                 НАСТРОЙКИ GITHUB API (ОБЯЗАТЕЛЬНО)
         // =================================================================
         
         const REPO_OWNER = "He11born"; 
         const REPO_NAME = "misis_bot"; 
-        const FILE_PATH = "разраб.csv"; // Путь к файлу в репозитории
-        const BRANCH_NAME = "main"; // Ветка для коммита
+        const FILE_PATH = "разраб.csv"; 
+        const BRANCH_NAME = "main"; 
         const API_BASE_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BRANCH_NAME}`;
         
         const TOKEN_SESSION_KEY = 'githubToken';
+        const THEME_STORAGE_KEY = 'theme'; // Ключ для хранения темы
         // =================================================================
 
         const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
@@ -194,14 +212,66 @@
         
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
-        
-        let isFirestoreReady = false; 
-        
-        // Глобальная переменная для хранения SHA последнего состояния файла с GitHub
         let currentFileSHA = null; 
-        
-        // Статус наличия несохраненных изменений
         let hasUnsyncedChanges = false;
+
+        // =================================================================
+        //                       ЛОГИКА ТЕМЫ (СВЕТЛАЯ/ТЁМНАЯ)
+        // =================================================================
+
+        /**
+         * Обновляет иконку переключателя темы.
+         */
+        function updateThemeIcon(isDark) {
+            const iconContainer = document.getElementById('theme-icon');
+            if (!iconContainer) return;
+
+            // Иконка Солнца (для Light Mode)
+            const sunIcon = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>`;
+            
+            // Иконка Луны (для Dark Mode)
+            const moonIcon = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>`;
+            
+            iconContainer.innerHTML = isDark ? moonIcon : sunIcon;
+        }
+
+        /**
+         * Переключает тему (светлая/темная)
+         */
+        function toggleTheme() {
+            const htmlElement = document.documentElement;
+            const isDark = htmlElement.classList.contains('dark');
+            
+            if (isDark) {
+                htmlElement.classList.remove('dark');
+                localStorage.setItem(THEME_STORAGE_KEY, 'light');
+                updateThemeIcon(false);
+            } else {
+                htmlElement.classList.add('dark');
+                localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+                updateThemeIcon(true);
+            }
+        }
+
+        /**
+         * Загружает сохраненную тему или устанавливает системную.
+         */
+        function loadTheme() {
+            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+            const htmlElement = document.documentElement;
+            
+            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                htmlElement.classList.add('dark');
+                updateThemeIcon(true);
+            } else {
+                htmlElement.classList.remove('dark');
+                updateThemeIcon(false);
+            }
+        }
+
+        // =================================================================
+        //                       ЛОГИКА GITHUB/СИНХРОНИЗАЦИИ
+        // =================================================================
 
         /**
          * Устанавливает статус несохраненных изменений и обновляет кнопку синхронизации.
@@ -209,16 +279,25 @@
         function setUnsyncedStatus(status) {
             hasUnsyncedChanges = status;
             const button = document.getElementById('sync-db-button');
+            const tokenIsSet = getGitHubToken();
+
             if (status) {
-                button.classList.remove('bg-green-600', 'bg-blue-600', 'cursor-not-allowed');
+                // Изменения есть
+                button.classList.remove('bg-green-600', 'bg-sky-600', 'hover:bg-sky-700');
                 button.classList.add('bg-red-600', 'hover:bg-red-700');
                 button.textContent = 'Отправить изменения в базу данных (есть локальные изменения)';
+                button.disabled = !tokenIsSet;
             } else {
+                // Изменений нет
                 button.classList.remove('bg-red-600', 'hover:bg-red-700');
-                button.classList.add('bg-green-600', 'cursor-not-allowed');
+                button.classList.add('bg-sky-600', 'hover:bg-sky-700');
                 button.textContent = 'Нет несохраненных изменений';
+                button.disabled = true;
             }
-            button.disabled = !status || !getGitHubToken();
+            // Дополнительная проверка на токен, если статус false
+            if (!tokenIsSet) {
+                 button.textContent = 'Требуется токен GitHub для отправки';
+            }
         }
 
         /**
@@ -233,14 +312,32 @@
          */
         function updateGitHubStatus(message, colorClass = 'bg-gray-100', isError = false) {
             const statusElement = document.getElementById('github-status');
+            const isDark = document.documentElement.classList.contains('dark');
+
+            // Сброс всех классов
+            statusElement.className = 'px-4 py-2 text-sm rounded-lg text-white font-semibold transition-colors duration-300';
+            
+            let finalClass = '';
+            if (isError) {
+                finalClass = 'bg-red-600';
+            } else if (colorClass.includes('blue')) {
+                finalClass = isDark ? 'bg-sky-700' : 'bg-sky-600';
+            } else if (colorClass.includes('green')) {
+                 finalClass = 'bg-green-600';
+            } else if (colorClass.includes('yellow')) {
+                 finalClass = 'bg-yellow-600';
+            } else {
+                 finalClass = isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600';
+            }
+            
+            statusElement.classList.add(...finalClass.split(' '));
             statusElement.textContent = `Статус GitHub: ${message}`;
-            statusElement.className = `px-4 py-2 text-sm rounded-lg text-white font-semibold ${isError ? 'bg-red-500' : colorClass}`;
             
             // Сброс класса через 5 секунд, если это не ошибка и нет несохраненных изменений
             if (!isError && !hasUnsyncedChanges) {
                 clearTimeout(statusElement.timer);
                 statusElement.timer = setTimeout(() => {
-                    statusElement.className = 'px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600';
+                    statusElement.className = isDark ? 'px-4 py-2 text-sm rounded-lg bg-gray-700 text-gray-300' : 'px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600';
                     statusElement.textContent = 'Статус GitHub: Синхронизировано';
                 }, 5000);
             }
@@ -251,27 +348,33 @@
          */
         function updateTokenStatus() {
             const tokenStatusEl = document.getElementById('token-status');
+            const saveButton = document.getElementById('save-token-button');
             const token = getGitHubToken();
             const isTokenSet = token && token.length > 10;
+            const baseClass = 'px-4 py-2 font-semibold rounded-lg transition duration-150 shadow-md';
 
             if (isTokenSet) {
                 tokenStatusEl.textContent = 'Токен сохранен. Готов к синхронизации.';
-                tokenStatusEl.className = 'mt-2 text-sm font-medium text-green-600';
+                tokenStatusEl.classList.replace('text-red-600', 'text-green-600');
+                tokenStatusEl.classList.replace('dark:text-red-400', 'dark:text-green-400');
+                
+                saveButton.textContent = 'Токен сохранен';
+                saveButton.className = baseClass + ' bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-400';
+                
                 document.getElementById('github-token-input').value = '********'; // Скрываем токен
-                document.getElementById('save-token-button').textContent = 'Токен сохранен';
-                document.getElementById('save-token-button').classList.remove('bg-blue-600');
-                document.getElementById('save-token-button').classList.add('bg-green-600');
-                updateGitHubStatus("Готов к работе.", 'bg-blue-500');
+                updateGitHubStatus("Готов к работе.", 'bg-sky-500');
             } else {
                 tokenStatusEl.textContent = 'Токен не настроен или некорректен.';
-                tokenStatusEl.className = 'mt-2 text-sm font-medium text-red-600';
+                tokenStatusEl.classList.replace('text-green-600', 'text-red-600');
+                tokenStatusEl.classList.replace('dark:text-green-400', 'dark:text-red-400');
+                
+                saveButton.textContent = 'Сохранить токен';
+                saveButton.className = baseClass + ' bg-sky-600 dark:bg-sky-500 text-white hover:bg-sky-700 dark:hover:bg-sky-400';
+                
                 document.getElementById('github-token-input').value = '';
-                document.getElementById('save-token-button').textContent = 'Сохранить токен';
-                document.getElementById('save-token-button').classList.remove('bg-green-600');
-                document.getElementById('save-token-button').classList.add('bg-blue-600');
                 updateGitHubStatus("Ошибка: Нет токена.", 'bg-red-500', true);
             }
-            setUnsyncedStatus(hasUnsyncedChanges); // Обновляем состояние кнопки синхронизации в зависимости от токена
+            setUnsyncedStatus(hasUnsyncedChanges); 
             return isTokenSet;
         }
 
@@ -281,18 +384,17 @@
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
             box.innerHTML = message;
-            box.className = 'mt-4 p-4 rounded-lg';
             box.classList.remove('hidden');
             
             const styles = {
-                'error': ['bg-red-100', 'border-red-400', 'text-red-700'],
-                'warning': ['bg-yellow-100', 'border-yellow-400', 'text-yellow-700'],
-                'info': ['bg-blue-100', 'border-blue-400', 'text-blue-700'],
-                'success': ['bg-green-100', 'border-green-400', 'text-green-700']
+                'error': ['bg-red-100', 'border-red-400', 'text-red-700', 'dark:bg-red-900', 'dark:border-red-600', 'dark:text-red-300'],
+                'warning': ['bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'dark:bg-yellow-900', 'dark:border-yellow-600', 'dark:text-yellow-300'],
+                'info': ['bg-sky-100', 'border-sky-400', 'text-sky-700', 'dark:bg-sky-900', 'dark:border-sky-600', 'dark:text-sky-300'],
+                'success': ['bg-green-100', 'border-green-400', 'text-green-700', 'dark:bg-green-900', 'dark:border-green-600', 'dark:text-green-300']
             };
             
             // Удаление всех возможных классов
-            ['bg-red-100', 'border-red-400', 'text-red-700', 'bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700', 'bg-green-100', 'border-green-400', 'text-green-700'].forEach(c => box.classList.remove(c));
+            box.className = 'mt-4 p-4 rounded-lg transition-colors duration-300 border';
             box.classList.add(...(styles[type] || styles['info']));
 
             clearTimeout(box.timer);
@@ -302,20 +404,12 @@
         }
 
         // =================================================================
-        //                   УТИЛИТЫ BASE64 / UNICODE
+        //                   УТИЛИТЫ BASE64 / CSV
         // =================================================================
         
-        /** Кодирует строку UTF-8 в Uint8Array. */
-        function utf8Encode(str) {
-            return new TextEncoder().encode(str);
-        }
-        
-        /** Декодирует Uint8Array в строку UTF-8. */
-        function utf8Decode(bytes) {
-            return new TextDecoder().decode(bytes);
-        }
+        function utf8Encode(str) { return new TextEncoder().encode(str); }
+        function utf8Decode(bytes) { return new TextDecoder().decode(bytes); }
 
-        /** Декодирует Base64 в строку UTF-8 (для кириллицы). */
         function base64ToUtf8(base64) {
             try {
                 const binaryString = atob(base64.replace(/\s/g, ''));
@@ -330,7 +424,6 @@
             }
         }
 
-        /** Кодирует строку UTF-8 в Base64 (для кириллицы). */
         function utf8ToBase64(str) {
             const bytes = utf8Encode(str);
             let binary = '';
@@ -340,40 +433,24 @@
             return btoa(binary);
         }
         
-        // =================================================================
-
-        /**
-         * Парсит CSV-строку во временный массив объектов.
-         */
         function parseCSV(csvText, delimiter) {
             try {
-                // Удаление BOM (Byte Order Mark) если есть
                 let normalizedText = csvText.replace(/^\ufeff/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
                 const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
-                
                 if (lines.length < 2) return [];
 
                 const headers = lines[0].split(delimiter).map(h => h.trim());
-                const keyMap = {
-                    'ID номер': 'id',
-                    'ФИО': 'name',
-                    'Количество пропусков': 'absences'
-                };
+                const keyMap = { 'ID номер': 'id', 'ФИО': 'name', 'Количество пропусков': 'absences' };
 
                 return lines.slice(1).map(line => {
-                    // Простая, но надежная логика для нашего формата:
                     const parts = line.split(delimiter).map(p => p.trim());
-                    
                     if (parts.length < headers.length) {
                         console.warn("Строка CSV имеет меньше полей, чем ожидалось:", line);
                         return null; 
                     }
-
                     const student = {};
-
                     headers.forEach((header, index) => {
                         const key = keyMap[header] || header;
-                        // Удаление кавычек вокруг значения
                         let value = parts[index] ? parts[index].replace(/^"|"$/g, '').replace(/""/g, '"') : '';
 
                         if (key === 'absences') {
@@ -391,11 +468,25 @@
             }
         }
         
+        function dataToCSV(data) {
+            const headers = ['ID номер', 'ФИО', 'Количество пропусков'];
+            let csvContent = headers.join(CSV_DELIMITER) + '\n';
+
+            data.forEach(student => {
+                const escapedName = student.name.replace(/"/g, '""');
+                const row = [
+                    student.docId, 
+                    `"${escapedName}"`, 
+                    student.absences
+                ].join(CSV_DELIMITER);
+                csvContent += row + '\n';
+            });
+            // Добавляем BOM (\ufeff) для корректного отображения кириллицы в Excel
+            return '\ufeff' + csvContent;
+        }
+
         // --- Local Storage Analog Functions ---
 
-        /**
-         * Загружает данные из Local Storage.
-         */
         function loadFromLocalStorage() {
             try {
                 const json = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -408,9 +499,6 @@
             return [];
         }
 
-        /**
-         * Сохраняет текущие данные в Local Storage.
-         */
         function saveToLocalStorage(data) {
             try {
                 const json = JSON.stringify(data);
@@ -425,9 +513,6 @@
         
         // --- GitHub API Functions ---
         
-        /**
-         * Загружает Base64 контент и SHA с GitHub.
-         */
         async function fetchContentFromGitHub() {
             const token = getGitHubToken();
             if (!token) {
@@ -453,8 +538,6 @@
                 }
                 
                 const fileData = await response.json();
-                
-                // Декодируем Base64-контент, полученный от GitHub
                 const csvContent = base64ToUtf8(fileData.content); 
                 const sha = fileData.sha;
                 
@@ -467,32 +550,6 @@
             }
         }
 
-        /**
-         * Конвертирует текущие данные в строку CSV.
-         */
-        function dataToCSV(data) {
-            const headers = ['ID номер', 'ФИО', 'Количество пропусков'];
-            let csvContent = headers.join(CSV_DELIMITER) + '\n';
-
-            data.forEach(student => {
-                // Экранирование кавычек в ФИО для корректного CSV
-                // Оборачивание поля в кавычки для защиты от разделителей в ФИО
-                const escapedName = student.name.replace(/"/g, '""');
-                
-                const row = [
-                    student.docId, 
-                    `"${escapedName}"`, 
-                    student.absences
-                ].join(CSV_DELIMITER);
-                csvContent += row + '\n';
-            });
-            // Добавляем BOM (\ufeff) для корректного отображения кириллицы в Excel
-            return '\ufeff' + csvContent;
-        }
-
-        /**
-         * Отправляет текущие данные в файл разраб.csv на GitHub.
-         */
         async function syncToGitHub() {
             const token = getGitHubToken();
             const syncButton = document.getElementById('sync-db-button');
@@ -548,11 +605,10 @@
                 }
                 
                 const resultData = await putResponse.json();
-                // Обновляем SHA после успешного коммита
                 currentFileSHA = resultData.content.sha; 
 
                 updateGitHubStatus("Успешно синхронизировано!", 'bg-green-500');
-                setUnsyncedStatus(false); // Сбрасываем статус несохраненных изменений
+                setUnsyncedStatus(false); 
                 return true;
 
             } catch (e) {
@@ -563,9 +619,9 @@
                     e.message.substring(0, 80) + '...';
                 
                 updateGitHubStatus(`Ошибка PUT: ${errorMessage}`, 'bg-red-500', true);
-                syncButton.disabled = false; // Разблокируем кнопку, чтобы можно было попробовать снова
+                setUnsyncedStatus(true); // Сохраняем статус, чтобы пользователь мог попробовать снова
                 syncButton.textContent = 'Ошибка синхронизации! Повторить?';
-                syncButton.classList.remove('bg-yellow-500');
+                syncButton.classList.remove('bg-sky-600', 'hover:bg-sky-700');
                 syncButton.classList.add('bg-red-600');
                 
                 return false;
@@ -574,14 +630,10 @@
         
         // --- Core Logic Functions ---
 
-        /**
-         * Сохраняет данные только в Local Storage и помечает изменения как несохраненные.
-         */
         async function saveStudentData(docId, key, value) {
-            // Сохранение в Local Storage (только)
             const localSuccess = saveToLocalStorage(studentData);
             if (localSuccess) {
-                setUnsyncedStatus(true); // Устанавливаем статус, что есть изменения
+                setUnsyncedStatus(true); 
             }
             return localSuccess;
         }
@@ -593,7 +645,6 @@
                 sessionStorage.setItem(TOKEN_SESSION_KEY, token);
                 updateTokenStatus();
                 displayMessage('Токен GitHub сохранен. Данные будут синхронизироваться по нажатию кнопки.', 'success');
-                // Запуск повторной инициализации, чтобы загрузить данные с GitHub
                 initApp(true); 
             } else {
                 sessionStorage.removeItem(TOKEN_SESSION_KEY);
@@ -602,9 +653,6 @@
             }
         }
         
-        /**
-         * Обработчик ручной синхронизации.
-         */
         async function handleManualSync() {
             if (hasUnsyncedChanges) {
                 await syncToGitHub();
@@ -639,22 +687,24 @@
             }
             
             // 1. Обновляем локальные данные
-            studentData[studentIndex][key] = valueToSave;
-            cell.textContent = valueToSave; 
-            calculateAndRenderStats();
-            renderTable(); // Перерисовка для применения стилей
+            if (studentData[studentIndex][key] !== valueToSave) {
+                studentData[studentIndex][key] = valueToSave;
+                cell.textContent = valueToSave; 
+                calculateAndRenderStats();
+                renderTable(); // Перерисовка для применения стилей
 
-            // 2. Сохраняем данные (Local Storage ONLY)
-            displayMessage('Изменение сохранено локально. Нажмите кнопку "Отправить" для синхронизации с GitHub.', 'info');
-            const success = await saveStudentData(docId, key, valueToSave); 
-            
-            if (!success) {
-                // Откат, если Local Storage не сработал
-                studentData[studentIndex][key] = oldValue;
-                cell.textContent = oldValue; 
-                calculateAndRenderStats(); 
-                displayMessage('Ошибка сохранения! Изменение отменено.', 'error');
-                setUnsyncedStatus(false); // Если не удалось сохранить даже локально
+                // 2. Сохраняем данные (Local Storage ONLY)
+                displayMessage('Изменение сохранено локально. Нажмите кнопку "Отправить" для синхронизации с GitHub.', 'info');
+                const success = await saveStudentData(docId, key, valueToSave); 
+                
+                if (!success) {
+                    // Откат
+                    studentData[studentIndex][key] = oldValue;
+                    cell.textContent = oldValue; 
+                    calculateAndRenderStats(); 
+                    displayMessage('Ошибка сохранения! Изменение отменено.', 'error');
+                    setUnsyncedStatus(false);
+                }
             }
         }
         
@@ -679,6 +729,7 @@
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
             
+            // Обновление иконок сортировки
             document.querySelectorAll('#student-table th').forEach(th => {
                 th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
                 th.classList.add('sort-none');
@@ -689,7 +740,7 @@
             });
 
             if (studentData.length === 0) {
-                 const row = `<tr><td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500">Нет данных для отображения.</td></tr>`;
+                 const row = `<tr><td colspan="3" class="px-6 py-4 whitespace-nowrap text-sm text-center text-gray-500 dark:text-gray-400">Нет данных для отображения.</td></tr>`;
                  tbody.innerHTML = row;
                  return;
             }
@@ -698,25 +749,27 @@
                 const isOdd = index % 2 !== 0;
                 const row = document.createElement('tr');
                 
-                let rowClass = isOdd ? 'bg-gray-50' : 'bg-white';
+                let rowClass = isOdd ? 'bg-gray-50 dark:bg-gray-700' : 'bg-white dark:bg-gray-800';
                 // Визуальная индикация по пропускам
                 if (student.absences > 30) {
-                    rowClass = 'bg-red-50 hover:bg-red-100 transition duration-150';
+                    rowClass = 'bg-red-50 dark:bg-red-900/50 hover:bg-red-100 dark:hover:bg-red-900 transition duration-150';
                 } else if (student.absences > 15) {
-                    rowClass = 'bg-yellow-50 hover:bg-yellow-100 transition duration-150';
+                    rowClass = 'bg-yellow-50 dark:bg-yellow-900/50 hover:bg-yellow-100 dark:hover:bg-yellow-900 transition duration-150';
+                } else {
+                    rowClass += ' hover:bg-gray-100 dark:hover:bg-gray-700/70 transition duration-150';
                 }
                 row.className = rowClass;
 
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.id}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-200">${student.id}</td>
                     <td 
-                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"
+                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300"
                         contenteditable="true"
                         data-docid="${student.docId}"
                         data-key="name"
                     >${student.name}</td>
                     <td 
-                        class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600' : 'text-gray-900'}"
+                        class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-center ${student.absences > 30 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-200'}"
                         contenteditable="true"
                         data-docid="${student.docId}"
                         data-key="absences"
@@ -755,6 +808,9 @@
         // --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ---
 
         async function initApp(forceReload = false) {
+            
+            loadTheme(); // Загружаем тему до рендеринга
+            
             const loadingIndicator = document.getElementById('loading-indicator');
             loadingIndicator.textContent = "Инициализация данных...";
             
@@ -765,12 +821,10 @@
                 let loadedFrom = 'Local Storage';
                 const tokenIsSet = getGitHubToken() !== null;
                 
-                // Перезагрузка с GitHub, если Local Storage пуст или была принудительная перезагрузка
                 if (initialData.length === 0 || forceReload) {
                     
                     if (tokenIsSet) {
-                        // 1. Загрузка с GitHub
-                        updateGitHubStatus("Загрузка данных с GitHub...", 'bg-blue-500');
+                        updateGitHubStatus("Загрузка данных с GitHub...", 'bg-sky-500');
                         const githubResult = await fetchContentFromGitHub();
                         
                         if (githubResult.csvContent) {
@@ -779,7 +833,6 @@
                             loadedFrom = 'GitHub';
                             updateGitHubStatus("Данные успешно загружены с GitHub.", 'bg-green-500');
                         } else {
-                            // 2. Если GitHub не дал данных, берем из Local Storage (если есть) или по умолчанию
                             initialData = loadFromLocalStorage();
                             if (initialData.length === 0) {
                                 initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
@@ -790,7 +843,6 @@
                             updateGitHubStatus("Ошибка загрузки. Используется Local Storage/по умолчанию.", 'bg-gray-500');
                         }
                     } else {
-                        // 3. Если токен не установлен, используем Local Storage или CSV по умолчанию
                         initialData = loadFromLocalStorage();
                         if (initialData.length === 0) {
                             initialData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
@@ -804,7 +856,6 @@
                         displayMessage(`Данные загружены из ${loadedFrom}.`, 'info');
                     }
                 } else {
-                    // Если данные есть в Local Storage, пытаемся получить SHA для синхронизации
                     if (tokenIsSet) {
                         const { sha } = await fetchContentFromGitHub();
                         currentFileSHA = sha;
@@ -815,7 +866,7 @@
                 
                 calculateAndRenderStats();
                 sortData(currentSort.key);
-                setUnsyncedStatus(false); // Изначально изменения отсутствуют
+                setUnsyncedStatus(false); 
                 
                 document.getElementById('loading-indicator').classList.add('hidden');
                 document.getElementById('student-table').classList.remove('hidden');
@@ -832,9 +883,9 @@
 
                 document.getElementById('save-token-button').addEventListener('click', handleSaveToken);
                 document.getElementById('sync-db-button').addEventListener('click', handleManualSync);
+                document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
                 
             } catch (e) {
-                // Обработка любых критических ошибок инициализации
                 console.error("Критическая ошибка инициализации приложения:", e);
                 loadingIndicator.textContent = `Критическая ошибка: ${e.message}. Не удалось запустить.`;
                 loadingIndicator.classList.add('text-red-600', 'font-bold');
@@ -843,6 +894,11 @@
         }
 
         window.onload = initApp;
+        
+        // Импорты Firebase - сохранены для совместимости, но не используются
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     </script>
 </body>
 </html>
