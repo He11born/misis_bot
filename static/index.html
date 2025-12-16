@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" class="light">
+<html lang="ru" class="light transition-colors duration-300">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,111 +14,119 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.4s ease;
         }
 
-        /* Светлая тема: Белый фон и голубые акценты */
+        /* ЦВЕТА СВЕТЛОЙ ТЕМЫ */
         html:not(.dark) body { background-color: #ffffff !important; }
-        html:not(.dark) .custom-header { background-color: #e0f2fe; border: 1px solid #bae6fd; }
-        html:not(.dark) .custom-card { background-color: #f0f9ff; border: 1px solid #e0f2fe; }
-        html:not(.dark) .custom-table-head { background-color: #bae6fd; }
+        html:not(.dark) .custom-header { background-color: #f0f9ff; border: 1px solid #e0f2fe; }
+        html:not(.dark) .custom-card { background-color: #f8fafc; border: 1px solid #f1f5f9; }
+        html:not(.dark) .custom-table-head { background-color: #e0f2fe; }
 
-        /* Темная тема */
-        html.dark body { background-color: #111827; }
-        html.dark .custom-header { background-color: #1f2937; border: 1px solid #374151; }
-        html.dark .custom-card { background-color: #1f2937; border: 1px solid #374151; }
+        /* ЦВЕТА ТЕМНОЙ ТЕМЫ */
+        html.dark body { background-color: #0f172a; color: #f8fafc; }
+        html.dark .custom-header { background-color: #1e293b; border: 1px solid #334155; }
+        html.dark .custom-card { background-color: #1e293b; border: 1px solid #334155; }
+        html.dark .custom-table-head { background-color: #334155; }
 
-        /* Индикация пропусков (Ваше условие) */
-        .row-warning-orange { background-color: #f97316 !important; color: white !important; }
-        .row-warning-red { background-color: #ef4444 !important; color: white !important; }
+        /* ПРИГЛУШЕННЫЕ ЦВЕТА ПРОПУСКОВ */
+        /* Оранжевый (72+): Мягкий янтарный */
+        .row-abs-orange { background-color: #ffedd5 !important; color: #9a3412 !important; }
+        html.dark .row-abs-orange { background-color: #7c2d12 !important; color: #ffedd5 !important; }
 
-        th { cursor: pointer; user-select: none; position: relative; padding-right: 2rem !important; }
-        th.sort-asc::after { content: " ▲"; position: absolute; right: 0.5rem; }
-        th.sort-desc::after { content: " ▼"; position: absolute; right: 0.5rem; }
-        th.sort-none::after { content: " ↕"; position: absolute; right: 0.5rem; opacity: 0.3; }
+        /* Красный (108+): Приглушенный коралловый */
+        .row-abs-red { background-color: #fee2e2 !important; color: #991b1b !important; }
+        html.dark .row-abs-red { background-color: #7f1d1d !important; color: #fee2e2 !important; }
+
+        /* Стили сортировки */
+        th { cursor: pointer; user-select: none; position: relative; padding-right: 2.5rem !important; }
+        th::after {
+            content: ' '; position: absolute; right: 0.75rem; top: 50%;
+            transform: translateY(-50%); opacity: 0.3; transition: 0.2s;
+        }
+        th.sort-none::after { content: "↕"; }
+        th.sort-asc::after { content: "▲"; opacity: 1; }
+        th.sort-desc::after { content: "▼"; opacity: 1; }
 
         [contenteditable="true"]:focus {
-            outline: 2px solid #0ea5e9;
-            background: rgba(14, 165, 233, 0.1);
+            outline: 2px solid #38bdf8;
+            background: rgba(56, 189, 248, 0.1);
             border-radius: 4px;
         }
     </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen text-gray-800 dark:text-gray-100">
+<body class="p-4 md:p-8 min-h-screen text-slate-700 dark:text-slate-200">
 
     <div class="max-w-6xl mx-auto">
         
-        <header class="custom-header mb-8 p-6 rounded-2xl shadow-lg flex justify-between items-center transition-all">
+        <header class="custom-header mb-8 p-6 rounded-3xl shadow-sm flex justify-between items-center transition-all">
             <div>
-                <h1 class="text-3xl font-extrabold text-sky-900 dark:text-white mb-1">Анализ Пропусков Студентов</h1>
-                <p id="app-status" class="text-sky-700 dark:text-gray-400 text-sm">
+                <h1 class="text-3xl font-extrabold text-sky-900 dark:text-sky-100 tracking-tight">Мониторинг Пропусков</h1>
+                <p id="app-status" class="text-sky-600 dark:text-sky-400 text-sm mt-1">
                     Данные сохраняются в Local Storage и синхронизируются с GitHub API.
                 </p>
             </div>
             
-            <button id="theme-toggle" class="p-3 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition shadow-md flex items-center gap-2">
-                <svg id="theme-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
-                <span class="font-bold">Тема</span>
+            <button id="theme-toggle" class="p-3 rounded-2xl bg-white dark:bg-slate-700 shadow-md hover:shadow-lg transition-all active:scale-95 border border-slate-100 dark:border-slate-600">
+                <svg id="theme-icon" class="w-6 h-6 text-sky-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
             </button>
         </header>
 
-        <div id="github-config" class="custom-card p-6 rounded-xl shadow-md mb-8 transition-all">
-            <h2 class="text-xl font-bold text-sky-800 dark:text-sky-300 mb-3">Настройка Токена GitHub</h2>
-            <div class="flex flex-col sm:flex-row gap-3">
-                <input type="password" id="github-token-input" placeholder="Вставьте GitHub PAT..." class="flex-grow p-3 border border-sky-200 dark:border-gray-600 rounded-lg dark:bg-gray-700 outline-none focus:ring-2 focus:ring-sky-500">
-                <button id="save-token-button" class="px-6 py-3 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-700 transition">Сохранить токен</button>
+        <div id="github-config" class="custom-card p-6 rounded-2xl shadow-sm mb-8">
+            <h2 class="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Настройка синхронизации</h2>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <input type="password" id="github-token-input" placeholder="Вставьте ваш GitHub PAT..." class="flex-grow p-3 border border-slate-200 dark:border-slate-700 rounded-xl dark:bg-slate-800 outline-none focus:ring-2 focus:ring-sky-500 transition-all">
+                <button id="save-token-button" class="px-8 py-3 bg-sky-600 text-white font-bold rounded-xl hover:bg-sky-700 shadow-md transition">Сохранить</button>
             </div>
-            <div id="token-status" class="mt-2 text-sm font-bold text-red-500">Токен не настроен.</div>
+            <div id="token-status" class="mt-3 text-xs font-bold text-rose-500 uppercase tracking-tighter">Токен не активен</div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="custom-card p-6 rounded-xl shadow-md border-t-4 border-sky-500">
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Всего студентов</p>
-                <p id="total-students" class="text-4xl font-black text-sky-900 dark:text-white mt-2">0</p>
+            <div class="custom-card p-6 rounded-2xl shadow-sm border-b-4 border-sky-400">
+                <p class="text-xs font-bold text-slate-400 uppercase">Студентов</p>
+                <p id="total-students" class="text-4xl font-black text-slate-800 dark:text-white mt-1">0</p>
             </div>
-            <div class="custom-card p-6 rounded-xl shadow-md border-t-4 border-orange-500">
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Всего пропусков</p>
-                <p id="total-absences" class="text-4xl font-black text-sky-900 dark:text-white mt-2">0</p>
+            <div class="custom-card p-6 rounded-2xl shadow-sm border-b-4 border-amber-400">
+                <p class="text-xs font-bold text-slate-400 uppercase">Всего часов</p>
+                <p id="total-absences" class="text-4xl font-black text-slate-800 dark:text-white mt-1">0</p>
             </div>
-            <div class="custom-card p-6 rounded-xl shadow-md border-t-4 border-green-500">
-                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Средний показатель</p>
-                <p id="avg-absences" class="text-4xl font-black text-sky-900 dark:text-white mt-2">0.00</p>
+            <div class="custom-card p-6 rounded-2xl shadow-sm border-b-4 border-emerald-400">
+                <p class="text-xs font-bold text-slate-400 uppercase">Среднее</p>
+                <p id="avg-absences" class="text-4xl font-black text-slate-800 dark:text-white mt-1">0.00</p>
             </div>
         </div>
 
-        <div class="custom-card rounded-2xl shadow-xl overflow-hidden transition-all">
+        <div class="custom-card rounded-3xl shadow-xl overflow-hidden">
             <div class="overflow-x-auto">
                 <table id="student-table" class="min-w-full">
-                    <thead class="custom-table-head dark:bg-gray-900">
+                    <thead class="custom-table-head dark:bg-slate-800">
                         <tr>
-                            <th data-key="id" class="px-6 py-4 text-left text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-widest sort-none">ID</th>
-                            <th data-key="name" class="px-6 py-4 text-left text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-widest sort-none">ФИО</th>
-                            <th data-key="absences" class="px-6 py-4 text-left text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-widest sort-none">Пропуски</th>
+                            <th data-key="id" class="px-6 py-5 text-left text-xs font-bold text-sky-900 dark:text-sky-200 uppercase tracking-widest sort-none">ID</th>
+                            <th data-key="name" class="px-6 py-5 text-left text-xs font-bold text-sky-900 dark:text-sky-200 uppercase tracking-widest sort-none">ФИО Студента</th>
+                            <th data-key="absences" class="px-6 py-5 text-left text-xs font-bold text-sky-900 dark:text-sky-200 uppercase tracking-widest sort-none">Пропуски</th>
                         </tr>
                     </thead>
-                    <tbody id="table-body" class="divide-y divide-sky-100 dark:divide-gray-700">
+                    <tbody id="table-body" class="divide-y divide-slate-100 dark:divide-slate-700">
                         </tbody>
                 </table>
             </div>
         </div>
 
         <div class="mt-8 flex justify-center">
-            <button id="sync-db-button" disabled class="px-12 py-4 bg-gray-400 text-white font-black rounded-2xl shadow-lg transition-all transform hover:scale-105 disabled:opacity-50">
-                СИНХРОНИЗАЦИЯ НЕ ТРЕБУЕТСЯ
+            <button id="sync-db-button" disabled class="px-12 py-5 bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-black rounded-2xl shadow-sm transition-all transform hover:scale-105 disabled:opacity-50">
+                ДАННЫЕ АКТУАЛЬНЫ
             </button>
         </div>
     </div>
 
     <script type="module">
-        // Конфигурация GitHub
         const REPO_OWNER = "He11born"; 
         const REPO_NAME = "misis_bot";
         const FILE_PATH = "разраб.csv"; 
         const BRANCH_NAME = "main";
         const CSV_DELIMITER = ';';
-        const STORAGE_KEY = 'studentAbsenceData';
+        const STORAGE_KEY = 'absence_data_v2';
 
-        // ПОЛНЫЙ СПИСОК СТУДЕНТОВ
         const INITIAL_CSV = `ID номер;ФИО;Количество пропусков
 2502954;Аржанова Софья Максимовна;18
 2505473;Бодрова Ирина Александровна;72
@@ -147,52 +155,69 @@
 
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
+        let currentSHA = null;
+        let isChanged = false;
 
-        // --- ТЕМА ---
+        // --- ЛОГИКА ТЕМЫ ---
         function applyTheme(theme) {
+            const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
             if (theme === 'dark') {
-                document.documentElement.classList.add('dark');
-                document.getElementById('theme-icon').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
+                html.classList.add('dark');
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
             } else {
-                document.documentElement.classList.remove('dark');
-                document.getElementById('theme-icon').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>';
+                html.classList.remove('dark');
+                icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>';
             }
             localStorage.setItem('theme', theme);
         }
 
-        // --- РАБОТА С ДАННЫМИ ---
-        function parseCSV(csvText) {
-            const lines = csvText.trim().split('\n').filter(l => l.includes(CSV_DELIMITER));
-            return lines.slice(1).map(line => {
-                const parts = line.split(CSV_DELIMITER);
-                return {
-                    id: parts[0].trim(),
-                    name: parts[1].trim(),
-                    absences: parseInt(parts[2]) || 0
-                };
+        // --- ЛОГИКА СОРТИРОВКИ ---
+        function sortData(key) {
+            if (currentSort.key === key) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort.key = key;
+                currentSort.direction = (key === 'absences') ? 'desc' : 'asc';
+            }
+
+            studentData.sort((a, b) => {
+                let aV = a[key], bV = b[key];
+                if (typeof aV === 'string') {
+                    return currentSort.direction === 'asc' ? aV.localeCompare(bV, 'ru') : bV.localeCompare(aV, 'ru');
+                }
+                return currentSort.direction === 'asc' ? aV - bV : bV - aV;
             });
+
+            document.querySelectorAll('th').forEach(th => {
+                th.className = 'px-6 py-5 text-left text-xs font-bold text-sky-900 dark:text-sky-200 uppercase tracking-widest sort-none';
+                if (th.dataset.key === currentSort.key) {
+                    th.classList.replace('sort-none', currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+                }
+            });
+
+            renderTable();
         }
 
-        function renderTable(data) {
+        // --- ОТРИСОВКА ---
+        function renderTable() {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
             
-            data.forEach(student => {
-                const row = document.createElement('tr');
-                let colorClass = "";
+            studentData.forEach(s => {
+                const tr = document.createElement('tr');
+                let rowColor = "bg-white dark:bg-slate-800 hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors";
                 
-                // Проверка условий пропусков
-                if (student.absences >= 108) colorClass = "row-warning-red";
-                else if (student.absences >= 72) colorClass = "row-warning-orange";
-                else colorClass = "even:bg-gray-50 dark:even:bg-gray-900";
+                if (s.absences >= 108) rowColor = "row-abs-red";
+                else if (s.absences >= 72) rowColor = "row-abs-orange";
 
-                row.className = `hover:bg-sky-100 dark:hover:bg-gray-700 transition-colors ${colorClass}`;
-                row.innerHTML = `
-                    <td class="px-6 py-4 text-sm font-bold">${student.id}</td>
-                    <td class="px-6 py-4 text-sm" contenteditable="true" data-id="${student.id}" data-key="name">${student.name}</td>
-                    <td class="px-6 py-4 text-sm font-black" contenteditable="true" data-id="${student.id}" data-key="absences">${student.absences}</td>
+                tr.className = rowColor;
+                tr.innerHTML = `
+                    <td class="px-6 py-4 text-sm font-bold opacity-60">${s.id}</td>
+                    <td class="px-6 py-4 text-sm font-medium" contenteditable="true" data-id="${s.id}" data-key="name">${s.name}</td>
+                    <td class="px-6 py-4 text-sm font-black" contenteditable="true" data-id="${s.id}" data-key="absences">${s.absences}</td>
                 `;
-                tbody.appendChild(row);
+                tbody.appendChild(tr);
             });
             updateStats();
         }
@@ -205,54 +230,124 @@
             document.getElementById('avg-absences').textContent = (abs / (total || 1)).toFixed(2);
         }
 
-        // --- ИНИЦИАЛИЗАЦИЯ ---
+        // --- GITHUB API ---
+        async function fetchGitHubData() {
+            const token = sessionStorage.getItem('gh_token');
+            if (!token) return;
+
+            try {
+                const res = await fetch(API_URL(), { headers: { 'Authorization': `token ${token}` } });
+                if (res.ok) {
+                    const data = await res.json();
+                    currentSHA = data.sha;
+                    const content = decodeURIComponent(escape(atob(data.content)));
+                    studentData = parseCSV(content);
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(studentData));
+                    renderTable();
+                    setTokenStatus(true);
+                }
+            } catch (e) { console.error("GitHub Error", e); }
+        }
+
+        async function syncToGitHub() {
+            const token = sessionStorage.getItem('gh_token');
+            if (!token) return;
+
+            const btn = document.getElementById('sync-db-button');
+            btn.textContent = "СОХРАНЕНИЕ...";
+
+            const csv = "ID номер;ФИО;Количество пропусков\n" + 
+                studentData.map(s => `${s.id};${s.name};${s.absences}`).join('\n');
+            
+            const b64 = btoa(unescape(encodeURIComponent(csv)));
+
+            try {
+                const res = await fetch(API_URL(), {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: "Update student list", content: b64, sha: currentSHA, branch: BRANCH_NAME })
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    currentSHA = data.content.sha;
+                    setChangeFlag(false);
+                    alert("Данные успешно отправлены в базу GitHub!");
+                }
+            } catch (e) { alert("Ошибка при синхронизации!"); }
+        }
+
+        function API_URL() { return `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`; }
+
+        function parseCSV(text) {
+            return text.trim().split('\n').slice(1).map(line => {
+                const p = line.split(CSV_DELIMITER);
+                return { id: p[0].trim(), name: p[1].trim(), absences: parseInt(p[2]) || 0 };
+            });
+        }
+
+        function setChangeFlag(val) {
+            isChanged = val;
+            const btn = document.getElementById('sync-db-button');
+            if (val) {
+                btn.disabled = false;
+                btn.classList.replace('bg-slate-200', 'bg-rose-600');
+                btn.classList.replace('text-slate-400', 'text-white');
+                btn.textContent = "ОТПРАВИТЬ ИЗМЕНЕНИЯ";
+            } else {
+                btn.disabled = true;
+                btn.classList.replace('bg-rose-600', 'bg-slate-200');
+                btn.classList.replace('text-white', 'text-slate-400');
+                btn.textContent = "ДАННЫЕ АКТУАЛЬНЫ";
+            }
+        }
+
+        function setTokenStatus(active) {
+            const el = document.getElementById('token-status');
+            if (active) {
+                el.textContent = "СИНХРОНИЗАЦИЯ ВКЛЮЧЕНА";
+                el.className = "mt-3 text-xs font-bold text-emerald-500 uppercase tracking-widest";
+            }
+        }
+
+        // --- СОБЫТИЯ ---
         document.addEventListener('DOMContentLoaded', () => {
-            // Тема
             applyTheme(localStorage.getItem('theme') || 'light');
+            
+            const cached = localStorage.getItem(STORAGE_KEY);
+            studentData = cached ? JSON.parse(cached) : parseCSV(INITIAL_CSV);
+            
+            renderTable();
+            fetchGitHubData();
+
             document.getElementById('theme-toggle').addEventListener('click', () => {
                 applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
             });
 
-            // Данные
-            const cached = localStorage.getItem(STORAGE_KEY);
-            studentData = cached ? JSON.parse(cached) : parseCSV(INITIAL_CSV);
-            renderTable(studentData);
+            document.getElementById('save-token-button').addEventListener('click', () => {
+                const t = document.getElementById('github-token-input').value.trim();
+                if (t) { sessionStorage.setItem('gh_token', t); location.reload(); }
+            });
 
-            // Токен
-            const token = sessionStorage.getItem('gh_token');
-            if (token) {
-                document.getElementById('token-status').textContent = "Токен активен";
-                document.getElementById('token-status').className = "mt-2 text-sm font-bold text-green-500";
-            }
+            document.getElementById('sync-db-button').addEventListener('click', syncToGitHub);
 
-            // Слушатель редактирования
+            document.querySelectorAll('th[data-key]').forEach(th => {
+                th.addEventListener('click', () => sortData(th.dataset.key));
+            });
+
             document.getElementById('table-body').addEventListener('blur', (e) => {
                 const id = e.target.dataset.id;
                 const key = e.target.dataset.key;
                 let val = e.target.textContent.trim();
-                
                 const s = studentData.find(x => x.id === id);
                 if (s && s[key].toString() !== val) {
                     if (key === 'absences') val = parseInt(val) || 0;
                     s[key] = val;
                     localStorage.setItem(STORAGE_KEY, JSON.stringify(studentData));
-                    
-                    const btn = document.getElementById('sync-db-button');
-                    btn.disabled = false;
-                    btn.classList.replace('bg-gray-400', 'bg-red-600');
-                    btn.textContent = "ОТПРАВИТЬ ИЗМЕНЕНИЯ";
-                    
-                    renderTable(studentData);
+                    setChangeFlag(true);
+                    renderTable();
                 }
             }, true);
-        });
-
-        document.getElementById('save-token-button').addEventListener('click', () => {
-            const t = document.getElementById('github-token-input').value.trim();
-            if (t) {
-                sessionStorage.setItem('gh_token', t);
-                location.reload();
-            }
         });
     </script>
 </body>
