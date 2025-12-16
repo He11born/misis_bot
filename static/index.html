@@ -1,164 +1,125 @@
 <!DOCTYPE html>
-<html lang="ru" class="transition-colors duration-300 bg-white">
+<html lang="ru" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Анализ Пропусков Студентов</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            transition: background-color 0.3s;
+            transition: background-color 0.3s ease;
         }
 
-        th {
-            cursor: pointer;
-            user-select: none;
-            position: relative;
-            padding-right: 2.5rem !important;
-        }
-        th::after {
-            content: ' ';
-            position: absolute;
-            right: 0.75rem;
-            top: 50%;
-            transform: translateY(-50%);
-            opacity: 0.4;
-            transition: opacity 0.3s;
-        }
-        th.sort-none::after { content: "↕"; }
-        th.sort-asc::after { content: "▲"; opacity: 1; }
-        th.sort-desc::after { content: "▼"; opacity: 1; }
-        
+        /* Светлая тема: Белый фон и голубые акценты */
+        html:not(.dark) body { background-color: #ffffff !important; }
+        html:not(.dark) .custom-header { background-color: #e0f2fe; border: 1px solid #bae6fd; }
+        html:not(.dark) .custom-card { background-color: #f0f9ff; border: 1px solid #e0f2fe; }
+        html:not(.dark) .custom-table-head { background-color: #bae6fd; }
+
+        /* Темная тема */
+        html.dark body { background-color: #111827; }
+        html.dark .custom-header { background-color: #1f2937; border: 1px solid #374151; }
+        html.dark .custom-card { background-color: #1f2937; border: 1px solid #374151; }
+
+        /* Индикация пропусков (Ваше условие) */
+        .row-warning-orange { background-color: #f97316 !important; color: white !important; }
+        .row-warning-red { background-color: #ef4444 !important; color: white !important; }
+
+        th { cursor: pointer; user-select: none; position: relative; padding-right: 2rem !important; }
+        th.sort-asc::after { content: " ▲"; position: absolute; right: 0.5rem; }
+        th.sort-desc::after { content: " ▼"; position: absolute; right: 0.5rem; }
+        th.sort-none::after { content: " ↕"; position: absolute; right: 0.5rem; opacity: 0.3; }
+
         [contenteditable="true"]:focus {
-            outline: 2px solid #0090ff;
-            border-radius: 0.25rem;
-            padding: 3px;
-        }
-        [contenteditable="true"] {
-            transition: all 0.1s;
-        }
-
-        .container-fluid {
-            width: 95%;
-            max-width: 1200px;
-        }
-
-        /* Дополнительные стили для строк с превышением лимита */
-        .row-warning-orange {
-            background-color: #f97316 !important; /* orange-500 */
-            color: white !important;
-        }
-        .row-warning-red {
-            background-color: #ef4444 !important; /* red-500 */
-            color: white !important;
+            outline: 2px solid #0ea5e9;
+            background: rgba(14, 165, 233, 0.1);
+            border-radius: 4px;
         }
     </style>
 </head>
-<body class="p-4 md:p-8 transition-colors duration-300 bg-white dark:bg-gray-900 min-h-screen">
+<body class="p-4 md:p-8 min-h-screen text-gray-800 dark:text-gray-100">
 
-    <div class="container-fluid mx-auto">
+    <div class="max-w-6xl mx-auto">
         
-        <header class="mb-8 p-4 bg-white dark:bg-gray-800 shadow-xl rounded-xl transition-colors duration-300 flex justify-between items-center">
+        <header class="custom-header mb-8 p-6 rounded-2xl shadow-lg flex justify-between items-center transition-all">
             <div>
-                <h1 class="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mb-2">Анализ Пропусков Студентов</h1>
-                <p id="app-status" class="text-gray-600 dark:text-gray-400">
-                    <span class="text-xs block mt-1">
-                        Данные сохраняются в Local Storage и синхронизируются с GitHub API.
-                    </span>
+                <h1 class="text-3xl font-extrabold text-sky-900 dark:text-white mb-1">Анализ Пропусков Студентов</h1>
+                <p id="app-status" class="text-sky-700 dark:text-gray-400 text-sm">
+                    Данные сохраняются в Local Storage и синхронизируются с GitHub API.
                 </p>
             </div>
             
-            <button id="theme-toggle" class="p-3 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition duration-150 shadow-md">
-                <svg id="theme-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                </svg>
+            <button id="theme-toggle" class="p-3 rounded-xl bg-sky-600 text-white hover:bg-sky-700 transition shadow-md flex items-center gap-2">
+                <svg id="theme-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                <span class="font-bold">Тема</span>
             </button>
         </header>
-        
-        <div id="github-config" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-2 border-sky-300 dark:border-sky-700 mb-8 transition-colors duration-300">
-            <h2 class="text-xl font-semibold text-sky-700 dark:text-sky-300 mb-3">Настройка Токена GitHub (Обязательно)</h2>
-            <p class="text-sm text-sky-600 dark:text-sky-400 mb-3">
-                Пожалуйста, вставьте свой токен (PAT с правом `repo`) в поле ниже. Токен хранится только в браузере.
-            </p>
+
+        <div id="github-config" class="custom-card p-6 rounded-xl shadow-md mb-8 transition-all">
+            <h2 class="text-xl font-bold text-sky-800 dark:text-sky-300 mb-3">Настройка Токена GitHub</h2>
             <div class="flex flex-col sm:flex-row gap-3">
-                <input 
-                    type="password" 
-                    id="github-token-input" 
-                    placeholder="Вставьте ваш GitHub Personal Access Token..."
-                    class="flex-grow p-2 border border-sky-300 dark:border-sky-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-sky-400 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
-                >
-                <button 
-                    id="save-token-button"
-                    class="px-4 py-2 bg-sky-600 dark:bg-sky-500 text-white font-semibold rounded-lg hover:bg-sky-700 dark:hover:bg-sky-400 transition duration-150 shadow-md"
-                >
-                    Сохранить токен
-                </button>
+                <input type="password" id="github-token-input" placeholder="Вставьте GitHub PAT..." class="flex-grow p-3 border border-sky-200 dark:border-gray-600 rounded-lg dark:bg-gray-700 outline-none focus:ring-2 focus:ring-sky-500">
+                <button id="save-token-button" class="px-6 py-3 bg-sky-600 text-white font-bold rounded-lg hover:bg-sky-700 transition">Сохранить токен</button>
             </div>
-            <div id="token-status" class="mt-2 text-sm font-medium text-red-600 dark:text-red-400">Токен не настроен.</div>
+            <div id="token-status" class="mt-2 text-sm font-bold text-red-500">Токен не настроен.</div>
         </div>
 
-        <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-sky-500 transition-colors duration-300">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Всего студентов</p>
-                <p id="total-students" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="custom-card p-6 rounded-xl shadow-md border-t-4 border-sky-500">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Всего студентов</p>
+                <p id="total-students" class="text-4xl font-black text-sky-900 dark:text-white mt-2">0</p>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-red-500 transition-colors duration-300">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Суммарное количество пропусков</p>
-                <p id="total-absences" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0</p>
+            <div class="custom-card p-6 rounded-xl shadow-md border-t-4 border-orange-500">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Всего пропусков</p>
+                <p id="total-absences" class="text-4xl font-black text-sky-900 dark:text-white mt-2">0</p>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-green-500 transition-colors duration-300">
-                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Среднее количество пропусков</p>
-                <p id="avg-absences" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0.00</p>
+            <div class="custom-card p-6 rounded-xl shadow-md border-t-4 border-green-500">
+                <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">Средний показатель</p>
+                <p id="avg-absences" class="text-4xl font-black text-sky-900 dark:text-white mt-2">0.00</p>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto transition-colors duration-300">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Список Студентов</h2>
-                <div id="github-status" class="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
-                    Статус GitHub: Ожидание токена...
-                </div>
+        <div class="custom-card rounded-2xl shadow-xl overflow-hidden transition-all">
+            <div class="overflow-x-auto">
+                <table id="student-table" class="min-w-full">
+                    <thead class="custom-table-head dark:bg-gray-900">
+                        <tr>
+                            <th data-key="id" class="px-6 py-4 text-left text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-widest sort-none">ID</th>
+                            <th data-key="name" class="px-6 py-4 text-left text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-widest sort-none">ФИО</th>
+                            <th data-key="absences" class="px-6 py-4 text-left text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-widest sort-none">Пропуски</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-sky-100 dark:divide-gray-700">
+                        </tbody>
+                </table>
             </div>
-            
-            <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-sky-600 dark:text-sky-400">
-                Инициализация данных...
-            </div>
-            
-            <table id="student-table" class="min-w-full divide-y divide-gray-200 dark:divide-gray-700 hidden">
-                <thead class="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        <th data-key="id" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sort-none rounded-tl-xl">ID номер</th>
-                        <th data-key="name" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sort-none">ФИО (Редакт.)</th>
-                        <th data-key="absences" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sort-none rounded-tr-xl">Количество пропусков (Редакт.)</th>
-                    </tr>
-                </thead>
-                <tbody id="table-body" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                </tbody>
-            </table>
         </div>
 
-        <div class="mt-8 text-center">
-            <button id="sync-db-button" class="px-8 py-4 w-full md:w-auto text-lg font-bold text-white rounded-xl transition duration-300 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-sky-600" disabled>
-                Нет несохраненных изменений
+        <div class="mt-8 flex justify-center">
+            <button id="sync-db-button" disabled class="px-12 py-4 bg-gray-400 text-white font-black rounded-2xl shadow-lg transition-all transform hover:scale-105 disabled:opacity-50">
+                СИНХРОНИЗАЦИЯ НЕ ТРЕБУЕТСЯ
             </button>
         </div>
-
-        <div id="message-box" class="mt-4 p-4 hidden rounded-lg" role="alert"></div>
     </div>
 
     <script type="module">
+        // Конфигурация GitHub
         const REPO_OWNER = "He11born"; 
         const REPO_NAME = "misis_bot";
         const FILE_PATH = "разраб.csv"; 
-        const BRANCH_NAME = "main"; 
-        const API_BASE_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BRANCH_NAME}`;
-        
-        const TOKEN_SESSION_KEY = 'githubToken';
-        const THEME_STORAGE_KEY = 'theme';
+        const BRANCH_NAME = "main";
+        const CSV_DELIMITER = ';';
+        const STORAGE_KEY = 'studentAbsenceData';
 
-        const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
+        // ПОЛНЫЙ СПИСОК СТУДЕНТОВ
+        const INITIAL_CSV = `ID номер;ФИО;Количество пропусков
 2502954;Аржанова Софья Максимовна;18
 2505473;Бодрова Ирина Александровна;72
 2507138;Демидов Артемий Михайлович;123
@@ -184,190 +145,56 @@
 2513503;Яковлева Софья Владимировна;4
 2507065;Ярмошик Лилия Максимовна;6`;
 
-        const CSV_DELIMITER = ';';
-        const LOCAL_STORAGE_KEY = 'studentAbsenceData'; 
-        
         let studentData = [];
         let currentSort = { key: 'absences', direction: 'desc' };
-        let currentFileSHA = null; 
-        let hasUnsyncedChanges = false;
 
         // --- ТЕМА ---
-        function updateThemeIcon(isDark) {
-            const iconContainer = document.getElementById('theme-icon');
-            if (!iconContainer) return;
-            const sunIcon = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>`;
-            const moonIcon = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>`;
-            iconContainer.innerHTML = isDark ? moonIcon : sunIcon;
-        }
-
-        function toggleTheme() {
-            const htmlElement = document.documentElement;
-            const isDark = htmlElement.classList.contains('dark');
-            
-            if (isDark) {
-                htmlElement.classList.remove('dark');
-                localStorage.setItem(THEME_STORAGE_KEY, 'light');
-                updateThemeIcon(false);
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                document.getElementById('theme-icon').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
             } else {
-                htmlElement.classList.add('dark');
-                localStorage.setItem(THEME_STORAGE_KEY, 'dark');
-                updateThemeIcon(true);
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>';
             }
+            localStorage.setItem('theme', theme);
         }
 
-        function loadTheme() {
-            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-            const htmlElement = document.documentElement;
-            
-            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                htmlElement.classList.add('dark');
-                updateThemeIcon(true);
-            } else {
-                htmlElement.classList.remove('dark');
-                updateThemeIcon(false);
-            }
-        }
-
-        // --- GITHUB / SYNC ---
-        function setUnsyncedStatus(status) {
-            hasUnsyncedChanges = status;
-            const button = document.getElementById('sync-db-button');
-            const tokenIsSet = getGitHubToken();
-
-            if (status) {
-                button.classList.remove('bg-sky-600', 'hover:bg-sky-700');
-                button.classList.add('bg-red-600', 'hover:bg-red-700');
-                button.textContent = 'Отправить изменения в базу данных';
-                button.disabled = !tokenIsSet;
-            } else {
-                button.classList.remove('bg-red-600', 'hover:bg-red-700');
-                button.classList.add('bg-sky-600', 'hover:bg-sky-700');
-                button.textContent = 'Нет несохраненных изменений';
-                button.disabled = true;
-            }
-        }
-
-        function getGitHubToken() { return sessionStorage.getItem(TOKEN_SESSION_KEY); }
-
-        function updateGitHubStatus(message, colorClass = 'bg-gray-100', isError = false) {
-            const statusElement = document.getElementById('github-status');
-            const isDark = document.documentElement.classList.contains('dark');
-            statusElement.className = 'px-4 py-2 text-sm rounded-lg text-white font-semibold transition-colors duration-300';
-            
-            let finalClass = '';
-            if (isError) finalClass = 'bg-red-600';
-            else if (colorClass.includes('sky')) finalClass = isDark ? 'bg-sky-700' : 'bg-sky-600';
-            else if (colorClass.includes('green')) finalClass = 'bg-green-600';
-            else if (colorClass.includes('yellow')) finalClass = 'bg-yellow-600';
-            else finalClass = isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600';
-            
-            if (finalClass.includes('gray')) statusElement.classList.add('bg-gray-700', 'text-gray-300');
-            else statusElement.classList.add(...finalClass.split(' '), 'text-white');
-
-            statusElement.textContent = `Статус GitHub: ${message}`;
-        }
-        
-        function updateTokenStatus() {
-            const tokenStatusEl = document.getElementById('token-status');
-            const saveButton = document.getElementById('save-token-button');
-            const token = getGitHubToken();
-            const isTokenSet = token && token.length > 10;
-            const baseClass = 'px-4 py-2 font-semibold rounded-lg transition duration-150 shadow-md';
-
-            if (isTokenSet) {
-                tokenStatusEl.textContent = 'Токен сохранен.';
-                tokenStatusEl.classList.replace('text-red-600', 'text-green-600');
-                saveButton.textContent = 'Токен сохранен';
-                saveButton.className = baseClass + ' bg-green-600 text-white';
-                document.getElementById('github-token-input').value = '********';
-            } else {
-                tokenStatusEl.textContent = 'Токен не настроен.';
-                tokenStatusEl.classList.replace('text-green-600', 'text-red-600');
-                saveButton.textContent = 'Сохранить токен';
-                saveButton.className = baseClass + ' bg-sky-600 text-white';
-            }
-            setUnsyncedStatus(hasUnsyncedChanges);
-            return isTokenSet;
-        }
-
-        function displayMessage(message, type = 'info') {
-            const box = document.getElementById('message-box');
-            box.innerHTML = message;
-            box.classList.remove('hidden');
-            const styles = {
-                'error': ['bg-red-100', 'text-red-700'],
-                'warning': ['bg-yellow-100', 'text-yellow-700'],
-                'info': ['bg-sky-100', 'text-sky-700'],
-                'success': ['bg-green-100', 'text-green-700']
-            };
-            box.className = 'mt-4 p-4 rounded-lg border ' + (styles[type] || styles['info']).join(' ');
-            setTimeout(() => box.classList.add('hidden'), 5000);
-        }
-
-        // --- CORE LOGIC ---
-        function parseCSV(csvText, delimiter) {
-            let normalizedText = csvText.replace(/^\ufeff/, '').replace(/\r\n/g, '\n');
-            const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
-            if (lines.length < 2) return [];
-            const keyMap = { 'ID номер': 'id', 'ФИО': 'name', 'Количество пропусков': 'absences' };
-            const headers = lines[0].split(delimiter).map(h => h.trim());
+        // --- РАБОТА С ДАННЫМИ ---
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n').filter(l => l.includes(CSV_DELIMITER));
             return lines.slice(1).map(line => {
-                const parts = line.split(delimiter).map(p => p.trim());
-                const student = {};
-                headers.forEach((header, index) => {
-                    const key = keyMap[header] || header;
-                    let value = parts[index] || '';
-                    student[key] = key === 'absences' ? (parseInt(value, 10) || 0) : value;
-                });
-                student.docId = student.id.toString(); 
-                return student;
+                const parts = line.split(CSV_DELIMITER);
+                return {
+                    id: parts[0].trim(),
+                    name: parts[1].trim(),
+                    absences: parseInt(parts[2]) || 0
+                };
             });
         }
 
-        function dataToCSV(data) {
-            const headers = ['ID номер', 'ФИО', 'Количество пропусков'];
-            let csv = '\ufeff' + headers.join(CSV_DELIMITER) + '\n';
-            data.forEach(s => csv += `${s.docId}${CSV_DELIMITER}"${s.name.replace(/"/g, '""')}"${CSV_DELIMITER}${s.absences}\n`);
-            return csv;
-        }
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            
+            data.forEach(student => {
+                const row = document.createElement('tr');
+                let colorClass = "";
+                
+                // Проверка условий пропусков
+                if (student.absences >= 108) colorClass = "row-warning-red";
+                else if (student.absences >= 72) colorClass = "row-warning-orange";
+                else colorClass = "even:bg-gray-50 dark:even:bg-gray-900";
 
-        function loadFromLocalStorage() { return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || []; }
-        function saveToLocalStorage(data) { localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data)); return true; }
-
-        async function fetchContentFromGitHub() {
-            const token = getGitHubToken();
-            if (!token) return { csvContent: null, sha: null };
-            try {
-                const r = await fetch(API_BASE_URL, { headers: { 'Authorization': `token ${token}` } });
-                if (!r.ok) return { csvContent: null, sha: null };
-                const data = await r.json();
-                const content = decodeURIComponent(escape(atob(data.content)));
-                return { csvContent: content, sha: data.sha };
-            } catch { return { csvContent: null, sha: null }; }
-        }
-
-        async function syncToGitHub() {
-            const token = getGitHubToken();
-            if (!token) return;
-            const btn = document.getElementById('sync-db-button');
-            btn.textContent = 'Отправка...';
-            const { sha } = await fetchContentFromGitHub();
-            const csv = dataToCSV(studentData);
-            const base64 = btoa(unescape(encodeURIComponent(csv)));
-            try {
-                const r = await fetch(API_BASE_URL, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: "Update absences", content: base64, sha: sha || currentFileSHA, branch: BRANCH_NAME })
-                });
-                if (r.ok) {
-                    const res = await r.json();
-                    currentFileSHA = res.content.sha;
-                    setUnsyncedStatus(false);
-                    updateGitHubStatus("Синхронизировано", 'bg-green-500');
-                }
-            } catch { updateGitHubStatus("Ошибка синхронизации", 'bg-red-500', true); }
+                row.className = `hover:bg-sky-100 dark:hover:bg-gray-700 transition-colors ${colorClass}`;
+                row.innerHTML = `
+                    <td class="px-6 py-4 text-sm font-bold">${student.id}</td>
+                    <td class="px-6 py-4 text-sm" contenteditable="true" data-id="${student.id}" data-key="name">${student.name}</td>
+                    <td class="px-6 py-4 text-sm font-black" contenteditable="true" data-id="${student.id}" data-key="absences">${student.absences}</td>
+                `;
+                tbody.appendChild(row);
+            });
+            updateStats();
         }
 
         function updateStats() {
@@ -375,111 +202,57 @@
             const abs = studentData.reduce((sum, s) => sum + s.absences, 0);
             document.getElementById('total-students').textContent = total;
             document.getElementById('total-absences').textContent = abs;
-            document.getElementById('avg-absences').textContent = total > 0 ? (abs / total).toFixed(2) : '0.00';
+            document.getElementById('avg-absences').textContent = (abs / (total || 1)).toFixed(2);
         }
 
-        // --- РЕНДЕР ТАБЛИЦЫ С ПОДСВЕТКОЙ ---
-        function renderTable(data) {
-            const tbody = document.getElementById('table-body');
-            tbody.innerHTML = ''; 
-            data.forEach(student => {
-                const row = document.createElement('tr');
-                
-                // Логика цвета: Красный (>=108), Оранжевый (>=72)
-                let rowColorClass = "";
-                let textColorClass = "text-gray-900 dark:text-gray-100";
-                let secondaryTextClass = "text-gray-500 dark:text-gray-300";
-
-                if (student.absences >= 108) {
-                    rowColorClass = "row-warning-red";
-                    textColorClass = "text-white";
-                    secondaryTextClass = "text-white";
-                } else if (student.absences >= 72) {
-                    rowColorClass = "row-warning-orange";
-                    textColorClass = "text-white";
-                    secondaryTextClass = "text-white";
-                } else {
-                    rowColorClass = "even:bg-gray-50 dark:even:bg-gray-900";
-                }
-
-                row.className = `hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150 ${rowColorClass}`;
-                row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${textColorClass}">${student.docId}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm ${secondaryTextClass}" contenteditable="true" data-docid="${student.docId}" data-key="name">${student.name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold ${secondaryTextClass}" contenteditable="true" data-docid="${student.docId}" data-key="absences">${student.absences}</td>
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        async function handleCellEdit(e) {
-            const cell = e.target;
-            const docId = cell.dataset.docid;
-            const key = cell.dataset.key;
-            let val = cell.textContent.trim();
-            const idx = studentData.findIndex(s => s.docId === docId);
-            if (idx === -1) return;
-
-            if (key === 'absences') {
-                const n = parseInt(val, 10);
-                if (isNaN(n) || n < 0) { cell.textContent = studentData[idx].absences; return; }
-                val = n;
-            }
-            if (studentData[idx][key] !== val) {
-                studentData[idx][key] = val;
-                saveToLocalStorage(studentData);
-                setUnsyncedStatus(true);
-                renderTable(studentData); // Перерисовываем для обновления цвета
-                updateStats();
-            }
-        }
-
-        function handleSort(key) {
-            if (currentSort.key === key) currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
-            else { currentSort.key = key; currentSort.direction = key === 'absences' ? 'desc' : 'asc'; }
-            studentData.sort((a, b) => {
-                let vA = a[key], vB = b[key];
-                if (typeof vA === 'string') { vA = vA.toLowerCase(); vB = vB.toLowerCase(); }
-                return currentSort.direction === 'asc' ? (vA < vB ? -1 : 1) : (vA > vB ? -1 : 1);
-            });
-            renderTable(studentData);
-            document.querySelectorAll('th').forEach(th => {
-                th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
-                th.classList.add(th.dataset.key === currentSort.key ? (currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc') : 'sort-none');
-            });
-        }
-
-        async function initApp(force = false) {
-            loadTheme();
-            const tokenSet = updateTokenStatus();
-            if (tokenSet) {
-                const { csvContent, sha } = await fetchContentFromGitHub();
-                if (csvContent) {
-                    studentData = parseCSV(csvContent, CSV_DELIMITER);
-                    currentFileSHA = sha;
-                    saveToLocalStorage(studentData);
-                }
-            }
-            if (studentData.length === 0) studentData = loadFromLocalStorage();
-            if (studentData.length === 0) studentData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
-            
-            handleSort(currentSort.key);
-            updateStats();
-            document.getElementById('loading-indicator').classList.add('hidden');
-            document.getElementById('student-table').classList.remove('hidden');
-        }
-
+        // --- ИНИЦИАЛИЗАЦИЯ ---
         document.addEventListener('DOMContentLoaded', () => {
-            initApp();
-            document.getElementById('save-token-button').addEventListener('click', () => {
-                const t = document.getElementById('github-token-input').value.trim();
-                if (t.length > 10) { sessionStorage.setItem(TOKEN_SESSION_KEY, t); updateTokenStatus(); initApp(true); }
+            // Тема
+            applyTheme(localStorage.getItem('theme') || 'light');
+            document.getElementById('theme-toggle').addEventListener('click', () => {
+                applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
             });
-            document.getElementById('sync-db-button').addEventListener('click', syncToGitHub);
-            document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-            document.querySelectorAll('th[data-key]').forEach(th => th.addEventListener('click', () => handleSort(th.dataset.key)));
-            document.getElementById('table-body').addEventListener('blur', handleCellEdit, true);
-            document.getElementById('table-body').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }});
+
+            // Данные
+            const cached = localStorage.getItem(STORAGE_KEY);
+            studentData = cached ? JSON.parse(cached) : parseCSV(INITIAL_CSV);
+            renderTable(studentData);
+
+            // Токен
+            const token = sessionStorage.getItem('gh_token');
+            if (token) {
+                document.getElementById('token-status').textContent = "Токен активен";
+                document.getElementById('token-status').className = "mt-2 text-sm font-bold text-green-500";
+            }
+
+            // Слушатель редактирования
+            document.getElementById('table-body').addEventListener('blur', (e) => {
+                const id = e.target.dataset.id;
+                const key = e.target.dataset.key;
+                let val = e.target.textContent.trim();
+                
+                const s = studentData.find(x => x.id === id);
+                if (s && s[key].toString() !== val) {
+                    if (key === 'absences') val = parseInt(val) || 0;
+                    s[key] = val;
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(studentData));
+                    
+                    const btn = document.getElementById('sync-db-button');
+                    btn.disabled = false;
+                    btn.classList.replace('bg-gray-400', 'bg-red-600');
+                    btn.textContent = "ОТПРАВИТЬ ИЗМЕНЕНИЯ";
+                    
+                    renderTable(studentData);
+                }
+            }, true);
+        });
+
+        document.getElementById('save-token-button').addEventListener('click', () => {
+            const t = document.getElementById('github-token-input').value.trim();
+            if (t) {
+                sessionStorage.setItem('gh_token', t);
+                location.reload();
+            }
         });
     </script>
 </body>
