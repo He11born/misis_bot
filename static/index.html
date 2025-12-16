@@ -1,27 +1,22 @@
 <!DOCTYPE html>
-<!-- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Добавление классов фона (bg-white dark:bg-gray-900) к <html>. 
-     Это гарантирует, что фон всего окна браузера меняется, а не только область body. -->
-<html lang="ru" class="transition-colors duration-300 bg-white dark:bg-gray-900">
+<html lang="ru" class="transition-colors duration-300 bg-white">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анализ Пропусков Студентов (Исправление Темы 2)</title>
-    <!-- Подключение Tailwind CSS -->
+    <title>Анализ Пропусков Студентов</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            /* Настройки для плавного градиента */
             transition: background-color 0.3s;
         }
 
-        /* Стили для заголовков таблицы с возможностью сортировки */
         th {
             cursor: pointer;
             user-select: none;
             position: relative;
-            padding-right: 2.5rem !important; /* Увеличим отступ для иконок */
+            padding-right: 2.5rem !important;
         }
         th::after {
             content: ' ';
@@ -36,9 +31,8 @@
         th.sort-asc::after { content: "▲"; opacity: 1; }
         th.sort-desc::after { content: "▼"; opacity: 1; }
         
-        /* Стиль для редактируемых ячеек */
         [contenteditable="true"]:focus {
-            outline: 2px solid #0090ff; /* Более яркий фокус */
+            outline: 2px solid #0090ff;
             border-radius: 0.25rem;
             padding: 3px;
         }
@@ -50,38 +44,43 @@
             width: 95%;
             max-width: 1200px;
         }
+
+        /* Дополнительные стили для строк с превышением лимита */
+        .row-warning-orange {
+            background-color: #f97316 !important; /* orange-500 */
+            color: white !important;
+        }
+        .row-warning-red {
+            background-color: #ef4444 !important; /* red-500 */
+            color: white !important;
+        }
     </style>
 </head>
-<!-- Body сохраняет классы bg-white dark:bg-gray-900 и min-h-screen для надежности. -->
 <body class="p-4 md:p-8 transition-colors duration-300 bg-white dark:bg-gray-900 min-h-screen">
 
     <div class="container-fluid mx-auto">
         
-        <!-- HEADER и ПЕРЕКЛЮЧАТЕЛЬ ТЕМЫ -->
         <header class="mb-8 p-4 bg-white dark:bg-gray-800 shadow-xl rounded-xl transition-colors duration-300 flex justify-between items-center">
             <div>
                 <h1 class="text-3xl font-extrabold text-gray-800 dark:text-gray-100 mb-2">Анализ Пропусков Студентов</h1>
                 <p id="app-status" class="text-gray-600 dark:text-gray-400">
                     <span class="text-xs block mt-1">
-                        Данные сохраняются в **Local Storage** и синхронизируются с **GitHub API**.
+                        Данные сохраняются в Local Storage и синхронизируются с GitHub API.
                     </span>
                 </p>
             </div>
             
             <button id="theme-toggle" class="p-3 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-yellow-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition duration-150 shadow-md">
-                <!-- Иконка будет обновлена JavaScript -->
                 <svg id="theme-icon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Иконка по умолчанию (Солнце) -->
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
                 </svg>
             </button>
         </header>
         
-        <!-- КОНФИГУРАЦИЯ GITHUB ТОКЕНА (White/Gray-800) -->
         <div id="github-config" class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-2 border-sky-300 dark:border-sky-700 mb-8 transition-colors duration-300">
             <h2 class="text-xl font-semibold text-sky-700 dark:text-sky-300 mb-3">Настройка Токена GitHub (Обязательно)</h2>
             <p class="text-sm text-sky-600 dark:text-sky-400 mb-3">
-                Пожалуйста, вставьте свой токен (PAT с правом `repo`) в поле ниже. Токен хранится только в браузере (Session Storage).
+                Пожалуйста, вставьте свой токен (PAT с правом `repo`) в поле ниже. Токен хранится только в браузере.
             </p>
             <div class="flex flex-col sm:flex-row gap-3">
                 <input 
@@ -100,26 +99,21 @@
             <div id="token-status" class="mt-2 text-sm font-medium text-red-600 dark:text-red-400">Токен не настроен.</div>
         </div>
 
-        <!-- Блок статистики -->
         <div id="stats-container" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Всего студентов -->
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-sky-500 transition-colors duration-300">
                 <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Всего студентов</p>
                 <p id="total-students" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0</p>
             </div>
-            <!-- Суммарное количество пропусков -->
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-red-500 transition-colors duration-300">
                 <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Суммарное количество пропусков</p>
                 <p id="total-absences" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0</p>
             </div>
-            <!-- Среднее количество пропусков -->
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-t-4 border-green-500 transition-colors duration-300">
                 <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Среднее количество пропусков</p>
                 <p id="avg-absences" class="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">0.00</p>
             </div>
         </div>
 
-        <!-- Контейнер таблицы -->
         <div class="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg overflow-x-auto transition-colors duration-300">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-semibold text-gray-800 dark:text-gray-100">Список Студентов</h2>
@@ -128,7 +122,6 @@
                 </div>
             </div>
             
-            <!-- Индикатор загрузки -->
             <div id="loading-indicator" class="text-center p-8 text-lg font-medium text-sky-600 dark:text-sky-400">
                 Инициализация данных...
             </div>
@@ -142,43 +135,28 @@
                     </tr>
                 </thead>
                 <tbody id="table-body" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    <!-- Строки будут добавлены JavaScript -->
                 </tbody>
             </table>
         </div>
 
-        <!-- КНОПКА МАНУАЛЬНОЙ СИНХРОНИЗАЦИИ -->
         <div class="mt-8 text-center">
-            <button 
-                id="sync-db-button"
-                class="px-8 py-4 w-full md:w-auto text-lg font-bold text-white rounded-xl transition duration-300 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-green-600"
-                disabled
-            >
+            <button id="sync-db-button" class="px-8 py-4 w-full md:w-auto text-lg font-bold text-white rounded-xl transition duration-300 shadow-xl disabled:opacity-50 disabled:cursor-not-allowed bg-sky-600" disabled>
                 Нет несохраненных изменений
             </button>
         </div>
 
-        <!-- Контейнер для сообщений об ошибках -->
-        <div id="message-box" class="mt-4 p-4 hidden rounded-lg" role="alert">
-            <!-- Сообщения будут добавлены JavaScript -->
-        </div>
-
+        <div id="message-box" class="mt-4 p-4 hidden rounded-lg" role="alert"></div>
     </div>
 
     <script type="module">
-        // =================================================================
-        //                 НАСТРОЙКИ GITHUB API (ОБЯЗАТЕЛЬНО)
-        // =================================================================
-        
         const REPO_OWNER = "He11born"; 
-        const REPO_NAME = "misis_bot"; 
+        const REPO_NAME = "misis_bot";
         const FILE_PATH = "разраб.csv"; 
         const BRANCH_NAME = "main"; 
         const API_BASE_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}?ref=${BRANCH_NAME}`;
         
         const TOKEN_SESSION_KEY = 'githubToken';
-        const THEME_STORAGE_KEY = 'theme'; // Ключ для хранения темы
-        // =================================================================
+        const THEME_STORAGE_KEY = 'theme';
 
         const EMBEDDED_CSV_DATA = `ID номер;ФИО;Количество пропусков
 2502954;Аржанова Софья Максимовна;18
@@ -205,7 +183,7 @@
 2501852;Хомина Лилия Тарасовна;28
 2513503;Яковлева Софья Владимировна;4
 2507065;Ярмошик Лилия Максимовна;6`;
-        
+
         const CSV_DELIMITER = ';';
         const LOCAL_STORAGE_KEY = 'studentAbsenceData'; 
         
@@ -214,49 +192,30 @@
         let currentFileSHA = null; 
         let hasUnsyncedChanges = false;
 
-        // =================================================================
-        //                       ЛОГИКА ТЕМЫ (СВЕТЛАЯ/ТЁМНАЯ)
-        // =================================================================
-
-        /**
-         * Обновляет иконку переключателя темы.
-         */
+        // --- ТЕМА ---
         function updateThemeIcon(isDark) {
             const iconContainer = document.getElementById('theme-icon');
             if (!iconContainer) return;
-
-            // Иконка Солнца (для Light Mode)
             const sunIcon = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>`;
-            
-            // Иконка Луны (для Dark Mode)
             const moonIcon = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>`;
-            
             iconContainer.innerHTML = isDark ? moonIcon : sunIcon;
         }
 
-        /**
-         * Переключает тему (светлая/темная)
-         */
         function toggleTheme() {
             const htmlElement = document.documentElement;
             const isDark = htmlElement.classList.contains('dark');
             
             if (isDark) {
-                // Включаем светлую тему
                 htmlElement.classList.remove('dark');
                 localStorage.setItem(THEME_STORAGE_KEY, 'light');
                 updateThemeIcon(false);
             } else {
-                // Включаем темную тему
                 htmlElement.classList.add('dark');
                 localStorage.setItem(THEME_STORAGE_KEY, 'dark');
                 updateThemeIcon(true);
             }
         }
 
-        /**
-         * Загружает сохраненную тему или устанавливает системную.
-         */
         function loadTheme() {
             const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
             const htmlElement = document.documentElement;
@@ -270,91 +229,45 @@
             }
         }
 
-        // =================================================================
-        //                       ЛОГИКА GITHUB/СИНХРОНИЗАЦИИ
-        // =================================================================
-
-        /**
-         * Устанавливает статус несохраненных изменений и обновляет кнопку синхронизации.
-         */
+        // --- GITHUB / SYNC ---
         function setUnsyncedStatus(status) {
             hasUnsyncedChanges = status;
             const button = document.getElementById('sync-db-button');
             const tokenIsSet = getGitHubToken();
 
             if (status) {
-                // Изменения есть
-                button.classList.remove('bg-green-600', 'bg-sky-600', 'hover:bg-sky-700');
+                button.classList.remove('bg-sky-600', 'hover:bg-sky-700');
                 button.classList.add('bg-red-600', 'hover:bg-red-700');
-                button.textContent = 'Отправить изменения в базу данных (есть локальные изменения)';
+                button.textContent = 'Отправить изменения в базу данных';
                 button.disabled = !tokenIsSet;
             } else {
-                // Изменений нет
                 button.classList.remove('bg-red-600', 'hover:bg-red-700');
                 button.classList.add('bg-sky-600', 'hover:bg-sky-700');
                 button.textContent = 'Нет несохраненных изменений';
                 button.disabled = true;
             }
-            // Дополнительная проверка на токен, если статус false
-            if (!tokenIsSet) {
-                 button.textContent = 'Требуется токен GitHub для отправки';
-            }
         }
 
-        /**
-         * Получает токен из Session Storage.
-         */
-        function getGitHubToken() {
-            return sessionStorage.getItem(TOKEN_SESSION_KEY);
-        }
+        function getGitHubToken() { return sessionStorage.getItem(TOKEN_SESSION_KEY); }
 
-        /**
-         * Обновляет статус синхронизации с GitHub на UI.
-         */
         function updateGitHubStatus(message, colorClass = 'bg-gray-100', isError = false) {
             const statusElement = document.getElementById('github-status');
             const isDark = document.documentElement.classList.contains('dark');
-
-            // Сброс всех классов
             statusElement.className = 'px-4 py-2 text-sm rounded-lg text-white font-semibold transition-colors duration-300';
             
             let finalClass = '';
-            if (isError) {
-                finalClass = 'bg-red-600';
-            } else if (colorClass.includes('blue') || colorClass.includes('sky')) {
-                finalClass = isDark ? 'bg-sky-700' : 'bg-sky-600';
-            } else if (colorClass.includes('green')) {
-                 finalClass = 'bg-green-600';
-            } else if (colorClass.includes('yellow')) {
-                 finalClass = 'bg-yellow-600';
-            } else {
-                 finalClass = isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600';
-            }
+            if (isError) finalClass = 'bg-red-600';
+            else if (colorClass.includes('sky')) finalClass = isDark ? 'bg-sky-700' : 'bg-sky-600';
+            else if (colorClass.includes('green')) finalClass = 'bg-green-600';
+            else if (colorClass.includes('yellow')) finalClass = 'bg-yellow-600';
+            else finalClass = isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600';
             
-            // Если фон серый, текст должен быть серым, а не белым
-            if (finalClass.includes('gray')) {
-                statusElement.classList.add('bg-gray-700', 'text-gray-300');
-            } else {
-                 // Для всех остальных цветов текст должен быть белым
-                statusElement.classList.add(...finalClass.split(' '), 'text-white');
-            }
+            if (finalClass.includes('gray')) statusElement.classList.add('bg-gray-700', 'text-gray-300');
+            else statusElement.classList.add(...finalClass.split(' '), 'text-white');
 
             statusElement.textContent = `Статус GitHub: ${message}`;
-            
-            // Сброс класса через 5 секунд, если это не ошибка и нет несохраненных изменений
-            if (!isError && !hasUnsyncedChanges) {
-                clearTimeout(statusElement.timer);
-                statusElement.timer = setTimeout(() => {
-                    const defaultClass = isDark ? 'px-4 py-2 text-sm rounded-lg bg-gray-700 text-gray-300' : 'px-4 py-2 text-sm rounded-lg bg-gray-100 text-gray-600';
-                    statusElement.className = defaultClass;
-                    statusElement.textContent = 'Статус GitHub: Синхронизировано';
-                }, 5000);
-            }
         }
         
-        /**
-         * Обновляет статус токена на UI.
-         */
         function updateTokenStatus() {
             const tokenStatusEl = document.getElementById('token-status');
             const saveButton = document.getElementById('save-token-button');
@@ -363,542 +276,210 @@
             const baseClass = 'px-4 py-2 font-semibold rounded-lg transition duration-150 shadow-md';
 
             if (isTokenSet) {
-                tokenStatusEl.textContent = 'Токен сохранен. Готов к синхронизации.';
+                tokenStatusEl.textContent = 'Токен сохранен.';
                 tokenStatusEl.classList.replace('text-red-600', 'text-green-600');
-                tokenStatusEl.classList.replace('dark:text-red-400', 'dark:text-green-400');
-                
                 saveButton.textContent = 'Токен сохранен';
-                saveButton.className = baseClass + ' bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-400';
-                
-                document.getElementById('github-token-input').value = '********'; // Скрываем токен
-                updateGitHubStatus("Готов к работе.", 'bg-sky-500');
+                saveButton.className = baseClass + ' bg-green-600 text-white';
+                document.getElementById('github-token-input').value = '********';
             } else {
-                tokenStatusEl.textContent = 'Токен не настроен или некорректен.';
+                tokenStatusEl.textContent = 'Токен не настроен.';
                 tokenStatusEl.classList.replace('text-green-600', 'text-red-600');
-                tokenStatusEl.classList.replace('dark:text-green-400', 'dark:text-red-400');
-                
                 saveButton.textContent = 'Сохранить токен';
-                saveButton.className = baseClass + ' bg-sky-600 dark:bg-sky-500 text-white hover:bg-sky-700 dark:hover:bg-sky-400';
-                
-                document.getElementById('github-token-input').value = '';
-                updateGitHubStatus("Ошибка: Нет токена.", 'bg-red-500', true);
+                saveButton.className = baseClass + ' bg-sky-600 text-white';
             }
-            setUnsyncedStatus(hasUnsyncedChanges); 
+            setUnsyncedStatus(hasUnsyncedChanges);
             return isTokenSet;
         }
 
-        /**
-         * Отображает сообщение пользователю.
-         */
         function displayMessage(message, type = 'info') {
             const box = document.getElementById('message-box');
             box.innerHTML = message;
             box.classList.remove('hidden');
-            
             const styles = {
-                'error': ['bg-red-100', 'border-red-400', 'text-red-700', 'dark:bg-red-900', 'dark:border-red-600', 'dark:text-red-300'],
-                'warning': ['bg-yellow-100', 'border-yellow-400', 'text-yellow-700', 'dark:bg-yellow-900', 'dark:border-yellow-600', 'dark:text-yellow-300'],
-                'info': ['bg-sky-100', 'border-sky-400', 'text-sky-700', 'dark:bg-sky-900', 'dark:border-sky-600', 'dark:text-sky-300'],
-                'success': ['bg-green-100', 'border-green-400', 'text-green-700', 'dark:bg-green-900', 'dark:border-green-600', 'dark:text-green-300']
+                'error': ['bg-red-100', 'text-red-700'],
+                'warning': ['bg-yellow-100', 'text-yellow-700'],
+                'info': ['bg-sky-100', 'text-sky-700'],
+                'success': ['bg-green-100', 'text-green-700']
             };
-            
-            // Удаление всех возможных классов
-            box.className = 'mt-4 p-4 rounded-lg transition-colors duration-300 border';
-            box.classList.add(...(styles[type] || styles['info']));
-
-            clearTimeout(box.timer);
-            box.timer = setTimeout(() => {
-                box.classList.add('hidden');
-            }, 5000);
+            box.className = 'mt-4 p-4 rounded-lg border ' + (styles[type] || styles['info']).join(' ');
+            setTimeout(() => box.classList.add('hidden'), 5000);
         }
 
-        // =================================================================
-        //                   УТИЛИТЫ BASE64 / CSV
-        // =================================================================
-        
-        function utf8Encode(str) { return new TextEncoder().encode(str); }
-        function utf8Decode(bytes) { return new TextDecoder().decode(bytes); }
-
-        function base64ToUtf8(base64) {
-            try {
-                const binaryString = atob(base64.replace(/\s/g, ''));
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                return utf8Decode(bytes);
-            } catch (e) {
-                console.error("Ошибка декодирования Base64:", e);
-                return '';
-            }
-        }
-
-        function utf8ToBase64(str) {
-            const bytes = utf8Encode(str);
-            let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            return btoa(binary);
-        }
-        
+        // --- CORE LOGIC ---
         function parseCSV(csvText, delimiter) {
-            try {
-                let normalizedText = csvText.replace(/^\ufeff/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-                const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
-                if (lines.length < 2) return [];
-
-                const headers = lines[0].split(delimiter).map(h => h.trim());
-                const keyMap = { 'ID номер': 'id', 'ФИО': 'name', 'Количество пропусков': 'absences' };
-
-                return lines.slice(1).map(line => {
-                    const parts = line.split(delimiter).map(p => p.trim());
-                    if (parts.length < headers.length) {
-                        console.warn("Строка CSV имеет меньше полей, чем ожидалось:", line);
-                        return null; 
-                    }
-                    const student = {};
-                    headers.forEach((header, index) => {
-                        const key = keyMap[header] || header;
-                        let value = parts[index] ? parts[index].replace(/^"|"$/g, '').replace(/""/g, '"') : '';
-
-                        if (key === 'absences') {
-                            student[key] = parseInt(value, 10) || 0;
-                        } else {
-                            student[key] = value;
-                        }
-                    });
-                    student.docId = student.id.toString(); 
-                    return student;
-                }).filter(student => student !== null);
-            } catch (error) {
-                console.error("Ошибка парсинга CSV:", error.message);
-                return [];
-            }
+            let normalizedText = csvText.replace(/^\ufeff/, '').replace(/\r\n/g, '\n');
+            const lines = normalizedText.trim().split('\n').filter(line => line.trim() !== ''); 
+            if (lines.length < 2) return [];
+            const keyMap = { 'ID номер': 'id', 'ФИО': 'name', 'Количество пропусков': 'absences' };
+            const headers = lines[0].split(delimiter).map(h => h.trim());
+            return lines.slice(1).map(line => {
+                const parts = line.split(delimiter).map(p => p.trim());
+                const student = {};
+                headers.forEach((header, index) => {
+                    const key = keyMap[header] || header;
+                    let value = parts[index] || '';
+                    student[key] = key === 'absences' ? (parseInt(value, 10) || 0) : value;
+                });
+                student.docId = student.id.toString(); 
+                return student;
+            });
         }
-        
+
         function dataToCSV(data) {
             const headers = ['ID номер', 'ФИО', 'Количество пропусков'];
-            let csvContent = headers.join(CSV_DELIMITER) + '\n';
-
-            data.forEach(student => {
-                const escapedName = student.name.replace(/"/g, '""');
-                const row = [
-                    student.docId, 
-                    `"${escapedName}"`, 
-                    student.absences
-                ].join(CSV_DELIMITER);
-                csvContent += row + '\n';
-            });
-            // Добавляем BOM (\ufeff) для корректного отображения кириллицы в Excel
-            return '\ufeff' + csvContent;
+            let csv = '\ufeff' + headers.join(CSV_DELIMITER) + '\n';
+            data.forEach(s => csv += `${s.docId}${CSV_DELIMITER}"${s.name.replace(/"/g, '""')}"${CSV_DELIMITER}${s.absences}\n`);
+            return csv;
         }
 
-        // --- Local Storage Analog Functions ---
+        function loadFromLocalStorage() { return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || []; }
+        function saveToLocalStorage(data) { localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data)); return true; }
 
-        function loadFromLocalStorage() {
-            try {
-                const json = localStorage.getItem(LOCAL_STORAGE_KEY);
-                if (json) {
-                    return JSON.parse(json);
-                }
-            } catch (e) {
-                console.error("[Local Storage] Ошибка загрузки данных:", e);
-            }
-            return [];
-        }
-
-        function saveToLocalStorage(data) {
-            try {
-                const json = JSON.stringify(data);
-                localStorage.setItem(LOCAL_STORAGE_KEY, json);
-                return true;
-            } catch (e) {
-                console.error("[Local Storage] Ошибка сохранения данных:", e);
-                displayMessage('Критическая ошибка: Не удалось сохранить данные в Local Storage.', 'error');
-                return false;
-            }
-        }
-        
-        // --- GitHub API Functions ---
-        
         async function fetchContentFromGitHub() {
             const token = getGitHubToken();
-            if (!token) {
-                return { csvContent: null, sha: null };
-            }
-            
+            if (!token) return { csvContent: null, sha: null };
             try {
-                const response = await fetch(API_BASE_URL, {
-                    headers: {
-                        'Authorization': `token ${token}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                });
-
-                if (response.status === 404) {
-                    console.warn(`[GitHub] Файл ${FILE_PATH} не найден (404).`);
-                    return { csvContent: null, sha: null };
-                }
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(`GET failed: ${response.status} - ${errorData.message}`);
-                }
-                
-                const fileData = await response.json();
-                const csvContent = base64ToUtf8(fileData.content); 
-                const sha = fileData.sha;
-                
-                return { csvContent: csvContent, sha: sha };
-
-            } catch (e) {
-                console.error("[GitHub Fetch Error]:", e);
-                displayMessage(`Ошибка при загрузке данных с GitHub: ${e.message.substring(0, 80)}`, 'error');
-                return { csvContent: null, sha: null };
-            }
+                const r = await fetch(API_BASE_URL, { headers: { 'Authorization': `token ${token}` } });
+                if (!r.ok) return { csvContent: null, sha: null };
+                const data = await r.json();
+                const content = decodeURIComponent(escape(atob(data.content)));
+                return { csvContent: content, sha: data.sha };
+            } catch { return { csvContent: null, sha: null }; }
         }
 
         async function syncToGitHub() {
             const token = getGitHubToken();
-            const syncButton = document.getElementById('sync-db-button');
-
-            if (!token) {
-                updateGitHubStatus("Ошибка: Токен GitHub не настроен!", 'bg-red-500', true);
-                return false;
-            }
-            
-            // 1. Блокируем кнопку и показываем статус
-            syncButton.disabled = true;
-            syncButton.textContent = 'Отправка изменений...';
-            updateGitHubStatus("Отправка изменений...", 'bg-yellow-500');
-
-            let sha = currentFileSHA;
-            
-            // Если SHA отсутствует, пытаемся получить его перед коммитом
-            if (!sha) {
-                 const { sha: latestSha } = await fetchContentFromGitHub();
-                 currentFileSHA = latestSha;
-                 sha = latestSha;
-            }
-
-            // 2. Кодируем новое содержимое в Base64
-            const newCSVContent = dataToCSV(studentData);
-            const base64Content = utf8ToBase64(newCSVContent);
-
-            // 3. Отправляем PUT-запрос для обновления
-            const action = sha ? "Обновление" : "Создание";
-            const timestamp = new Date().toISOString();
-            const commitMessage = `${action} данных о пропусках [${timestamp}]`;
-            
-            const payload = {
-                message: commitMessage,
-                content: base64Content,
-                sha: sha, 
-                branch: BRANCH_NAME
-            };
-
+            if (!token) return;
+            const btn = document.getElementById('sync-db-button');
+            btn.textContent = 'Отправка...';
+            const { sha } = await fetchContentFromGitHub();
+            const csv = dataToCSV(studentData);
+            const base64 = btoa(unescape(encodeURIComponent(csv)));
             try {
-                const putResponse = await fetch(API_BASE_URL, {
+                const r = await fetch(API_BASE_URL, {
                     method: 'PUT',
-                    headers: {
-                        'Authorization': `token ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
+                    headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: "Update absences", content: base64, sha: sha || currentFileSHA, branch: BRANCH_NAME })
                 });
-                
-                if (!putResponse.ok) {
-                    const errorData = await putResponse.json();
-                    throw new Error(`PUT failed: ${putResponse.status} - ${errorData.message}`);
+                if (r.ok) {
+                    const res = await r.json();
+                    currentFileSHA = res.content.sha;
+                    setUnsyncedStatus(false);
+                    updateGitHubStatus("Синхронизировано", 'bg-green-500');
                 }
-                
-                const resultData = await putResponse.json();
-                currentFileSHA = resultData.content.sha; 
-
-                updateGitHubStatus("Успешно синхронизировано!", 'bg-green-500');
-                setUnsyncedStatus(false); 
-                return true;
-
-            } catch (e) {
-                console.error("[GitHub Sync Error] PUT Content:", e);
-                
-                const errorMessage = e.message.includes("409") ? 
-                    "Ошибка 409 Conflict: Данные на GitHub были изменены. Обновите страницу и повторите." : 
-                    e.message.substring(0, 80) + '...';
-                
-                updateGitHubStatus(`Ошибка PUT: ${errorMessage}`, 'bg-red-500', true);
-                setUnsyncedStatus(true); // Сохраняем статус, чтобы пользователь мог попробовать снова
-                syncButton.textContent = 'Ошибка синхронизации! Повторить?';
-                syncButton.classList.remove('bg-sky-600', 'hover:bg-sky-700');
-                syncButton.classList.add('bg-red-600');
-                
-                return false;
-            }
-        }
-        
-        // --- Core Logic Functions ---
-
-        async function saveStudentData(docId, key, value) {
-            const localSuccess = saveToLocalStorage(studentData);
-            if (localSuccess) {
-                setUnsyncedStatus(true); 
-            }
-            return localSuccess;
-        }
-        
-        function handleSaveToken() {
-            const input = document.getElementById('github-token-input');
-            const token = input.value.trim();
-            if (token && token.length > 10) {
-                sessionStorage.setItem(TOKEN_SESSION_KEY, token);
-                updateTokenStatus();
-                displayMessage('Токен GitHub сохранен. Данные будут синхронизироваться по нажатию кнопки.', 'success');
-                initApp(true); 
-            } else {
-                sessionStorage.removeItem(TOKEN_SESSION_KEY);
-                updateTokenStatus();
-                displayMessage('Ошибка: Введите корректный токен.', 'warning');
-            }
-        }
-        
-        async function handleManualSync() {
-            if (hasUnsyncedChanges) {
-                await syncToGitHub();
-            } else {
-                displayMessage('Нет изменений для отправки.', 'warning');
-            }
+            } catch { updateGitHubStatus("Ошибка синхронизации", 'bg-red-500', true); }
         }
 
-
-        async function handleCellEdit(event) {
-            const cell = event.target;
-            const docId = cell.dataset.docid;
-            const key = cell.dataset.key;
-            let newValue = cell.textContent.trim();
-            
-            const studentIndex = studentData.findIndex(s => s.docId === docId);
-
-            if (studentIndex === -1) return;
-
-            const student = studentData[studentIndex];
-            const oldValue = student[key];
-            let valueToSave = newValue;
-
-            if (key === 'absences') {
-                const parsedValue = parseInt(newValue, 10);
-                if (isNaN(parsedValue) || parsedValue < 0) {
-                    displayMessage('Ошибка: Количество пропусков должно быть неотрицательным числом. Изменение отменено.', 'warning');
-                    cell.textContent = oldValue;
-                    return;
-                }
-                valueToSave = parsedValue;
-            }
-            
-            // 1. Обновляем локальные данные
-            if (studentData[studentIndex][key] !== valueToSave) {
-                studentData[studentIndex][key] = valueToSave;
-                
-                // 2. Сохраняем и обновляем UI
-                await saveStudentData(docId, key, valueToSave);
-                renderTable(studentData);
-                updateStats();
-                
-                displayMessage(`Данные студента ${student.name} обновлены локально. Нажмите "Отправить", чтобы синхронизировать с GitHub.`, 'info');
-            }
-        }
-
-        /**
-         * Сортирует данные и обновляет UI таблицы.
-         */
-        function handleSort(key) {
-            if (currentSort.key === key) {
-                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
-            } else {
-                currentSort.key = key;
-                currentSort.direction = key === 'absences' ? 'desc' : 'asc'; // По пропускам по умолчанию по убыванию
-            }
-
-            // Логика сортировки
-            studentData.sort((a, b) => {
-                let valA = a[key];
-                let valB = b[key];
-
-                if (typeof valA === 'string') {
-                    valA = valA.toLowerCase();
-                    valB = valB.toLowerCase();
-                }
-
-                if (valA < valB) return currentSort.direction === 'asc' ? -1 : 1;
-                if (valA > valB) return currentSort.direction === 'asc' ? 1 : -1;
-                return 0;
-            });
-
-            renderTable(studentData);
-            updateSortIcons();
-        }
-
-        /**
-         * Обновляет иконки сортировки в заголовках таблицы.
-         */
-        function updateSortIcons() {
-            document.querySelectorAll('#student-table th').forEach(th => {
-                const key = th.dataset.key;
-                th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
-                
-                if (key === currentSort.key) {
-                    th.classList.add(currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc');
-                } else {
-                    th.classList.add('sort-none');
-                }
-            });
-        }
-        
-        /**
-         * Обновляет блок статистики.
-         */
         function updateStats() {
-            const totalStudents = studentData.length;
-            const totalAbsences = studentData.reduce((sum, s) => sum + s.absences, 0);
-            const avgAbsences = totalStudents > 0 ? (totalAbsences / totalStudents).toFixed(2) : '0.00';
-
-            document.getElementById('total-students').textContent = totalStudents;
-            document.getElementById('total-absences').textContent = totalAbsences;
-            document.getElementById('avg-absences').textContent = avgAbsences;
+            const total = studentData.length;
+            const abs = studentData.reduce((sum, s) => sum + s.absences, 0);
+            document.getElementById('total-students').textContent = total;
+            document.getElementById('total-absences').textContent = abs;
+            document.getElementById('avg-absences').textContent = total > 0 ? (abs / total).toFixed(2) : '0.00';
         }
 
-        /**
-         * Генерирует HTML-строки для таблицы.
-         */
+        // --- РЕНДЕР ТАБЛИЦЫ С ПОДСВЕТКОЙ ---
         function renderTable(data) {
             const tbody = document.getElementById('table-body');
-            tbody.innerHTML = ''; // Очистка таблицы
-            
+            tbody.innerHTML = ''; 
             data.forEach(student => {
                 const row = document.createElement('tr');
-                // Применяем полосатость и стили для hover, учитывая темную тему
-                row.className = 'hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-150 even:bg-gray-50 dark:even:bg-gray-900';
                 
+                // Логика цвета: Красный (>=108), Оранжевый (>=72)
+                let rowColorClass = "";
+                let textColorClass = "text-gray-900 dark:text-gray-100";
+                let secondaryTextClass = "text-gray-500 dark:text-gray-300";
+
+                if (student.absences >= 108) {
+                    rowColorClass = "row-warning-red";
+                    textColorClass = "text-white";
+                    secondaryTextClass = "text-white";
+                } else if (student.absences >= 72) {
+                    rowColorClass = "row-warning-orange";
+                    textColorClass = "text-white";
+                    secondaryTextClass = "text-white";
+                } else {
+                    rowColorClass = "even:bg-gray-50 dark:even:bg-gray-900";
+                }
+
+                row.className = `hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150 ${rowColorClass}`;
                 row.innerHTML = `
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">${student.docId}</td>
-                    <td 
-                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300" 
-                        contenteditable="true" 
-                        data-docid="${student.docId}" 
-                        data-key="name"
-                    >${student.name}</td>
-                    <td 
-                        class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 font-bold" 
-                        contenteditable="true" 
-                        data-docid="${student.docId}" 
-                        data-key="absences"
-                    >${student.absences}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium ${textColorClass}">${student.docId}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm ${secondaryTextClass}" contenteditable="true" data-docid="${student.docId}" data-key="name">${student.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-bold ${secondaryTextClass}" contenteditable="true" data-docid="${student.docId}" data-key="absences">${student.absences}</td>
                 `;
                 tbody.appendChild(row);
             });
         }
-        
-        /**
-         * Основная функция инициализации приложения.
-         */
-        async function initApp(forceReload = false) {
-            // 1. Установка и загрузка темы
-            loadTheme();
-            
-            const loadingIndicator = document.getElementById('loading-indicator');
-            const studentTable = document.getElementById('student-table');
-            const tokenIsSet = updateTokenStatus();
 
-            loadingIndicator.classList.remove('hidden');
-            studentTable.classList.add('hidden');
-            
-            let fetchedCSV = null;
-            let fetchedSHA = null;
-            
-            // 2. Попытка загрузки с GitHub
-            if (tokenIsSet) {
-                 updateGitHubStatus("Загрузка данных с GitHub...", 'bg-sky-500');
-                 const { csvContent, sha } = await fetchContentFromGitHub();
-                 fetchedCSV = csvContent;
-                 fetchedSHA = sha;
+        async function handleCellEdit(e) {
+            const cell = e.target;
+            const docId = cell.dataset.docid;
+            const key = cell.dataset.key;
+            let val = cell.textContent.trim();
+            const idx = studentData.findIndex(s => s.docId === docId);
+            if (idx === -1) return;
+
+            if (key === 'absences') {
+                const n = parseInt(val, 10);
+                if (isNaN(n) || n < 0) { cell.textContent = studentData[idx].absences; return; }
+                val = n;
             }
-            
-            // 3. Сравнение и загрузка данных
-            let localData = loadFromLocalStorage();
-            
-            if (fetchedCSV) {
-                // Если с GitHub что-то получено
-                const remoteData = parseCSV(fetchedCSV, CSV_DELIMITER);
-                
-                // Простое сравнение: если локально пусто или данные отличаются, используем удаленные
-                if (localData.length === 0 || forceReload || JSON.stringify(localData) !== JSON.stringify(remoteData)) {
-                    studentData = remoteData;
-                    currentFileSHA = fetchedSHA;
-                    saveToLocalStorage(studentData); // Сохраняем GitHub данные локально
-                    setUnsyncedStatus(false); 
-                    updateGitHubStatus("Данные успешно загружены с GitHub.", 'bg-green-500');
-                    if (localData.length > 0 && !forceReload) {
-                        displayMessage('Данные с GitHub новее, чем локальные. Локальные данные перезаписаны.', 'info');
-                    }
-                } else {
-                    // Локальные данные соответствуют удаленным
-                    studentData = localData;
-                    currentFileSHA = fetchedSHA;
-                    setUnsyncedStatus(false);
-                    updateGitHubStatus("Локальные и GitHub данные синхронизированы.", 'bg-green-500');
-                }
-            } else if (localData.length > 0) {
-                // Если нет токена/ошибки GitHub, но есть локальные данные, используем их
-                studentData = localData;
-                setUnsyncedStatus(true); // Локальные данные, которые нужно отправить
-                updateGitHubStatus("Работа в локальном режиме. Настройте токен для синхронизации.", 'bg-yellow-500');
-            } else {
-                // Если нигде нет данных, используем встроенные
-                studentData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+            if (studentData[idx][key] !== val) {
+                studentData[idx][key] = val;
                 saveToLocalStorage(studentData);
-                setUnsyncedStatus(true); // Встроенные данные нужно отправить
-                updateGitHubStatus("Загружены встроенные данные. Настройте токен для сохранения.", 'bg-yellow-500');
+                setUnsyncedStatus(true);
+                renderTable(studentData); // Перерисовываем для обновления цвета
+                updateStats();
             }
-
-            // 4. Первичная отрисовка
-            handleSort(currentSort.key); // Сортировка и рендер
-            updateStats();
-            
-            loadingIndicator.classList.add('hidden');
-            studentTable.classList.remove('hidden');
         }
 
-        // =================================================================
-        //                       ИНИЦИАЛИЗАЦИЯ И ОБРАБОТЧИКИ СОБЫТИЙ
-        // =================================================================
+        function handleSort(key) {
+            if (currentSort.key === key) currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            else { currentSort.key = key; currentSort.direction = key === 'absences' ? 'desc' : 'asc'; }
+            studentData.sort((a, b) => {
+                let vA = a[key], vB = b[key];
+                if (typeof vA === 'string') { vA = vA.toLowerCase(); vB = vB.toLowerCase(); }
+                return currentSort.direction === 'asc' ? (vA < vB ? -1 : 1) : (vA > vB ? -1 : 1);
+            });
+            renderTable(studentData);
+            document.querySelectorAll('th').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc', 'sort-none');
+                th.classList.add(th.dataset.key === currentSort.key ? (currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc') : 'sort-none');
+            });
+        }
+
+        async function initApp(force = false) {
+            loadTheme();
+            const tokenSet = updateTokenStatus();
+            if (tokenSet) {
+                const { csvContent, sha } = await fetchContentFromGitHub();
+                if (csvContent) {
+                    studentData = parseCSV(csvContent, CSV_DELIMITER);
+                    currentFileSHA = sha;
+                    saveToLocalStorage(studentData);
+                }
+            }
+            if (studentData.length === 0) studentData = loadFromLocalStorage();
+            if (studentData.length === 0) studentData = parseCSV(EMBEDDED_CSV_DATA, CSV_DELIMITER);
+            
+            handleSort(currentSort.key);
+            updateStats();
+            document.getElementById('loading-indicator').classList.add('hidden');
+            document.getElementById('student-table').classList.remove('hidden');
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             initApp();
-            
-            // Обработчик сохранения токена
-            document.getElementById('save-token-button').addEventListener('click', handleSaveToken);
-            
-            // Обработчик синхронизации
-            document.getElementById('sync-db-button').addEventListener('click', handleManualSync);
-            
-            // Обработчик переключения темы
+            document.getElementById('save-token-button').addEventListener('click', () => {
+                const t = document.getElementById('github-token-input').value.trim();
+                if (t.length > 10) { sessionStorage.setItem(TOKEN_SESSION_KEY, t); updateTokenStatus(); initApp(true); }
+            });
+            document.getElementById('sync-db-button').addEventListener('click', syncToGitHub);
             document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-
-            // Обработчики сортировки
-            document.querySelectorAll('#student-table th[data-key]').forEach(th => {
-                th.addEventListener('click', () => handleSort(th.dataset.key));
-            });
-            
-            // Обработчик редактирования ячеек (используем делегирование)
+            document.querySelectorAll('th[data-key]').forEach(th => th.addEventListener('click', () => handleSort(th.dataset.key)));
             document.getElementById('table-body').addEventListener('blur', handleCellEdit, true);
-
-            // Дополнительный обработчик для предотвращения переноса строки в contenteditable
-            document.getElementById('table-body').addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault(); 
-                    e.target.blur(); // Принудительно вызываем событие blur для сохранения
-                }
-            });
+            document.getElementById('table-body').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }});
         });
     </script>
 </body>
